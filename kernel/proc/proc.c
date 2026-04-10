@@ -31,6 +31,10 @@ struct cpu *mycpu(void) {
   return &cpus[hartid];
 }
 
+void forkret(void) {
+  usertrapret();
+}
+
 /* ================================================================
  * myproc — 获取当前 CPU 上正在运行的进程的 PCB 指针
  * ================================================================ */
@@ -51,6 +55,9 @@ void procinit(void) {
    * TODO [Lab5-任务1-步骤1]：
    *   遍历 proc[] 数组，将每个进程的 status 置为 TASK_FREE。
    * ================================================================ */
+  for (int i = 0; i < NPROC; i++) {
+    proc[i].status = TASK_FREE;
+  }
 }
 
 /* ================================================================
@@ -82,6 +89,16 @@ found:
    *   2. 分配 trapframe 页：调用 kalloc()；若失败则将状态恢复为 TASK_FREE 并返回0
    *   3. 将进程状态设为 TASK_ALLOCATED
    * ================================================================ */
+  p->pid = allocpid();
+
+  p->trapframe = (struct trapframe*)kalloc();
+  if (p->trapframe == 0) {
+    p->status = TASK_FREE;
+    return 0;
+  }
+  memset(p->trapframe, 0, sizeof(struct trapframe));
+  p->context.ra = (uint64)forkret;
+  p->status = TASK_ALLOCATED;
 
   return p;
 }
@@ -121,6 +138,12 @@ void scheduler(void) {
        *   4. 调用 swtch 切换到 p 的上下文：swtch(&c->context, &p->context)
        *   5. swtch 返回后（进程放弃了CPU），清零 c->proc
        * ================================================================ */
+      if (p->status == TASK_READY) {
+        p->status = TASK_RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
+        c->proc = 0;
+      }
     }
   }
 }
@@ -140,4 +163,50 @@ void yield(void) {
    *
    *   思考：为什么是 "进程 → 调度器" 而不是 "进程A → 进程B" 直接切换？
    * ================================================================ */
+  p->status = TASK_READY;
+  swtch(&p->context, &mycpu()->context);
+}
+
+
+static uint8 proczero_code[] = {
+  0x93, 0x08, 0x10, 0x00,  // li a7, 1
+  0x73, 0x00, 0x00, 0x00,  // ecall
+  0x93, 0x08, 0x20, 0x00,  // li a7, 2
+  0x73, 0x00, 0x00, 0x00,  // ecall
+  0x6f, 0x00, 0x00, 0x00,  // j .（死循环）
+};
+
+
+void userinit(void) {
+  struct proc *p = allocproc();
+
+  p->kstack = (uint64)kalloc();
+  p->context.sp = p->kstack + PGSIZE;
+
+  char *mem = kalloc();
+  memmove(mem, proczero_code, sizeof(proczero_code));
+  pte_t *pte = walk(kernel_pagetable, (uint64)mem, 0);
+  if (pte == 0 || !(*pte & PTE_V))
+      panic("userinit: page not mapped");
+  *pte |= PTE_U | PTE_X; 
+  p->trapframe->epc = (uint64)mem;
+  p->trapframe->sp = (uint64)mem + PGSIZE;
+
+  p->sz = PGSIZE;
+  p->status = TASK_READY;
+}
+
+void usertrapret(void) {
+  struct proc *p = myproc();
+
+  intr_off();
+
+  uint64 x = r_sstatus();
+  x &= ~SSTATUS_SPP;
+  x |= SSTATUS_SPIE;
+  w_sstatus(x);
+
+  w_sepc(p->trapframe->epc);
+
+  asm volatile("sret");
 }

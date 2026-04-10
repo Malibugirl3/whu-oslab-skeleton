@@ -1,7 +1,8 @@
 /* trap.c — 中断与异常分发（Lab4 任务1&3，Lab6 扩展）
  *
  * 本文件是内核的"中控室"。当 sys_trap_vector 把寄存器保存完毕，
- * 就会调用 sys_trap_handler()，由它来判断发生了什么事并分派处理。
+ * 就会调用 sys_trap_handler(regs)，由它来判断发生了什么事并分派处理。
+ * regs 为 kernelvec 在栈上保存的256 字节寄存器帧基址（经 a0 传入）。
  *
  * Lab4 实现：处理时冲中断，每次打印 "Tick!"
  * Lab5 扩展：在时钟中断中增加 yield()，触发进程调度
@@ -13,6 +14,7 @@
 #include "param.h"
 #include "riscv.h"
 #include "types.h"
+#include "proc.h"
 
 /* 声明 sys_trap_vector 汇编入口（在 kernelvec.S 中定义）*/
 extern char sys_trap_vector[];
@@ -59,15 +61,17 @@ void plicinit(void) {
  *     1  → 软件中断（由 M-Mode 的 timervec 注入的时钟信号）
  *     5  → S-Mode 时钟中断（如果直接委托到 S-Mode）
  *     9  → 外部中断（UART 键盘输入等）
+ *
+ * 参数 regs：kernelvec 栈帧基址（a0）；a7 在字节偏移 128，与 sd a7,128(sp) 一致。
  * ================================================================ */
-void sys_trap_handler(void) {
+void sys_trap_handler(uint64 *regs) {
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
 
   /* 验证：进入内核陷阱前，S-Mode 的中断应该已经关闭 */
-  if ((sstatus & SSTATUS_SPP) == 0)
-    panic("sys_trap_handler: not from supervisor mode");
+  // if ((sstatus & SSTATUS_SPP) == 0)
+  //   panic("sys_trap_handler: not from supervisor mode");
   if (intr_get())
     panic("sys_trap_handler: entered with interrupts enabled");
 
@@ -93,11 +97,13 @@ void sys_trap_handler(void) {
        *   3. （Lab5 完成后追加）：若当前有正在运行的进程，调用 yield() 让出 CPU。
        * ================================================================ */
       w_sip(r_sip() & ~SIP_SSIP);
-
       static int ticks = 0;
       ticks++;
       if (ticks % 10 == 0) {
           printf("Tick! (%d)\n", ticks);
+      }
+      if (myproc() && myproc()->status == TASK_RUNNING) {
+        yield();
       }
       break;
 
@@ -118,10 +124,15 @@ void sys_trap_handler(void) {
     }
 
   } else {
-    /* 同步异常：内核代码出了错，无法恢复，直接 panic */
-    printf("sys_trap_handler: exception! scause=%ld, sepc=%p, stval=%p\n",
-           scause, sepc, r_stval());
-    panic("sys_trap_handler: unexpected exception");
+    uint64 cause = scause & 0xff;
+    if (cause == 8) {
+      intr_on();
+      usertrap(regs);
+    } else {
+      printf("sys_trap_handler: exception! scause=%ld, sepc=%p, stval=%p\n",
+             scause, sepc, r_stval());
+      panic("sys_trap_handler: unexpected exception");
+    }
   }
 
   /* ================================================================
@@ -141,10 +152,22 @@ void sys_trap_handler(void) {
  *   - 需要切换陷阱向量到 sys_trap_vector（防止用户态 PC 出现在栈跟踪里）
  *   - 需要将 epc 加 4，跳过 ecall 指令（否则返回后又会执行 ecall）
  *   - 只处理 scause == 8（来自 U-Mode 的 ecall）
+ *
+ * kernelvec_regs：kernelvec 在栈上的保存区基址（与 sd a7,128(sp) 等一致）；
+ * 用户态通用寄存器与 trapframe 的同步只在本函数内进行，不在 sys_trap_handler 里展开。
  * ================================================================ */
-void usertrap(void) {
+static void sync_trapframe_from_kernelvec(struct proc *p, uint64 *kernelvec_regs) {
+  if (p == 0 || p->trapframe == 0 || kernelvec_regs == 0)
+    return;
+  /* 与 kernelvec.S 中 sd a7, 128(sp) 一致；日后可在此扩展更多寄存器 */
+  p->trapframe->a7 = *(uint64 *)((char *)kernelvec_regs + 128);
+}
+
+void usertrap(uint64 *kernelvec_regs) {
   /* 立即切换到内核态陷阱向量（防止处理用户陷阱时再发生用户态中断）*/
   w_stvec((uint64)sys_trap_vector);
+
+  sync_trapframe_from_kernelvec(myproc(), kernelvec_regs);
 
   uint64 cause = r_scause();
 
@@ -153,6 +176,15 @@ void usertrap(void) {
 
     /* 允许中断（系统调用可能涉及耗时 I/O 操作）*/
     intr_on();
+    myproc()->trapframe->epc = r_sepc() + 4;
+
+    uint64 num = myproc()->trapframe->a7;
+    if (num == 1)
+        printf("[proczero] first ecall! pid=%d\n", myproc()->pid);
+    else if (num == 2)    
+        printf("[proczero] second ecall! pid=%d\n", myproc()->pid);
+
+    usertrapret();
 
     /* ================================================================
      * TODO [Lab6-任务2]：

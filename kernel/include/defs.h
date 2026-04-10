@@ -16,6 +16,13 @@ struct inode;
 struct dirent;
 
 /* ======================================================
+ * 通用工具函数
+ * 文件：kernel/lib/string.c
+ * ====================================================== */
+void* memset(void *dst, int c, uint64 n);
+void* memmove(void *dst, const void *src, uint64 n);
+
+/* ======================================================
  * Lab1 新增：uart 串口驱动
  * 文件：kernel/driver/uart.c
  * ====================================================== */
@@ -49,6 +56,7 @@ pte_t *walk(pagetable_t pagetable, uint64 va, int alloc);
 int mappages(pagetable_t pagetable, uint64 pa, uint64 va, uint64 size,
              int perm);
 uint64 walkaddr(pagetable_t pagetable, uint64 va);
+extern pagetable_t kernel_pagetable;
 
 /* ======================================================
  * Lab4 新增：启动初始化
@@ -65,7 +73,7 @@ void timerinit(void);
 void trapinithart(void);
 void plicinit(void);
 void kerneltrap(void);
-void usertrap(void);
+void usertrap(uint64 *kernelvec_regs);
 void usertrapret(void);
 
 /* ======================================================
@@ -73,6 +81,7 @@ void usertrapret(void);
  * 文件：kernel/proc/proc.c
  * ====================================================== */
 void procinit(void);
+void userinit(void);
 struct proc *myproc(void);
 int allocpid(void);
 struct proc *allocproc(void);

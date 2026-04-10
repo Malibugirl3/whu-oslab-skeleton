@@ -33,8 +33,9 @@ void start_main() {
   uartinit();
   plicinit();
   intr_on();
-  // clear_screen();
-  printf( "Paging enabled! Interrupts on.\n");
+  procinit();    // 初始化进程表
+  userinit();    // 创建第一个进程
+  scheduler();   // 开始调度（永不返回）
 
   while (1); /* 内核死循环，不要删除 */
 }
