@@ -152,9 +152,6 @@ void sys_trap_handler(uint64 *regs) {
  *   - 需要切换陷阱向量到 sys_trap_vector（防止用户态 PC 出现在栈跟踪里）
  *   - 需要将 epc 加 4，跳过 ecall 指令（否则返回后又会执行 ecall）
  *   - 只处理 scause == 8（来自 U-Mode 的 ecall）
- *
- * kernelvec_regs：kernelvec 在栈上的保存区基址（与 sd a7,128(sp) 等一致）；
- * 用户态通用寄存器与 trapframe 的同步只在本函数内进行，不在 sys_trap_handler 里展开。
  * ================================================================ */
 static void sync_trapframe_from_kernelvec(struct proc *p, uint64 *kernelvec_regs) {
   if (p == 0 || p->trapframe == 0 || kernelvec_regs == 0)
