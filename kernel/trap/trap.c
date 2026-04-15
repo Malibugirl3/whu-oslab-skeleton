@@ -62,14 +62,14 @@ void plicinit(void) {
  *     9  → 外部中断（UART 键盘输入等）
  * ================================================================ */
 void sys_trap_handler(void) {
-  uint64 sepc = r_sepc();
-  uint64 sstatus = r_sstatus();
-  uint64 scause = r_scause();
+  uint64 sepc = r_sepc(); // 获取当前程序计数器
+  uint64 sstatus = r_sstatus(); // 获取当前状态寄存器
+  uint64 scause = r_scause(); // 获取当前中断原因
 
   /* 验证：进入内核陷阱前，S-Mode 的中断应该已经关闭 */
   // if ((sstatus & SSTATUS_SPP) == 0)
   //   panic("sys_trap_handler: not from supervisor mode");
-  if (intr_get())
+  if (intr_get()) // 如果中断使能，则panic
     panic("sys_trap_handler: entered with interrupts enabled");
 
   if (scause & 0x8000000000000000L) {
@@ -93,16 +93,16 @@ void sys_trap_handler(void) {
        *      思考：为什么不应每次中断都打印？应如何控制打印频率？
        *   3. （Lab5 完成后追加）：若当前有正在运行的进程，调用 yield() 让出 CPU。
        * ================================================================ */
-      w_sip(r_sip() & ~SIP_SSIP);
-      static int ticks = 0;
-      ticks++;
-      if (ticks % 10 == 0) {
+      w_sip(r_sip() & ~SIP_SSIP); // 清除软件中断待处理标志
+      static int ticks = 0; // 时钟中断次数
+      ticks++; // 时钟中断次数加1
+      if (ticks % 10 == 0) { // 每10次时钟中断打印一次
           printf("Tick! (%d)\n", ticks);
       }
-      if (myproc() && myproc()->status == TASK_RUNNING) {
+      if (myproc() && myproc()->status == TASK_RUNNING) { // 如果当前有正在运行的进程，则调用yield
         yield();
       }
-      break;
+      break; // 退出中断处理
 
     case 9:{
       /* 外部中断（如 UART 键盘）：Lab7 之前可暂不处理 */
