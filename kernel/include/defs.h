@@ -73,7 +73,7 @@ void timerinit(void);
 void trapinithart(void);
 void plicinit(void);
 void kerneltrap(void);
-void usertrap(uint64 *kernelvec_regs);
+void usertrap(void);
 void usertrapret(void);
 
 /* ======================================================

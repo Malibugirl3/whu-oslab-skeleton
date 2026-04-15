@@ -27,8 +27,8 @@ static int nextpid = 1;
  * 实现方式：读取 tp 寄存器（在 start.c 中被设置为 hartid）
  * ================================================================ */
 struct cpu *mycpu(void) {
-  int hartid = r_tp();
-  return &cpus[hartid];
+  int hartid = r_tp(); 
+  return &cpus[hartid]; // hartid是cpu的编号，从0开始，这个地方取出来的是对应CPU的cpu结构指针
 }
 
 void forkret(void) {
@@ -37,6 +37,7 @@ void forkret(void) {
 
 /* ================================================================
  * myproc — 获取当前 CPU 上正在运行的进程的 PCB 指针
+ * 初始的时候假装之前运行过proczero进程 
  * ================================================================ */
 struct proc *myproc(void) { return mycpu()->proc; }
 
@@ -93,12 +94,13 @@ found:
 
   p->trapframe = (struct trapframe*)kalloc();
   if (p->trapframe == 0) {
-    p->status = TASK_FREE;
+    p->status = TASK_FREE;  // 空间不足，分配失败，将状态恢复为 TASK_FREE
     return 0;
   }
   memset(p->trapframe, 0, sizeof(struct trapframe));
   p->context.ra = (uint64)forkret;
-  p->status = TASK_ALLOCATED;
+  p->status = TASK_ALLOCATED;   // 分配成功，将状态设置为 TASK_ALLOCATED
+  // TASK_READY的设置是在userinit函数中进行的
 
   return p;
 }
@@ -122,7 +124,7 @@ void scheduler(void) {
   struct proc *p;
   struct cpu *c = mycpu();
 
-  c->proc = 0;
+  c->proc = 0; // 初始的时候假装之前运行过proczero进程
 
   for (;;) {
     /* 必须打开中断！否则时钟信号无法到达，调度无法触发 */
@@ -160,11 +162,12 @@ void yield(void) {
    * TODO [Lab5-任务4]：
    *   1. 将进程状态改为 TASK_READY
    *   2. 调用 swtch 切回调度器上下文：swtch(&p->context, &mycpu()->context)
-   *
+   * 
    *   思考：为什么是 "进程 → 调度器" 而不是 "进程A → 进程B" 直接切换？
+   *   答：如果直接切换到另一个进程，那么当前进程的上下文信息就会丢失，导致无法恢复。
    * ================================================================ */
   p->status = TASK_READY;
-  swtch(&p->context, &mycpu()->context);
+  swtch(&p->context, &mycpu()->context);  
 }
 
 
@@ -183,9 +186,10 @@ void userinit(void) {
   p->kstack = (uint64)kalloc();
   p->context.sp = p->kstack + PGSIZE;
 
-  char *mem = kalloc();
+  char *mem = kalloc(); // 分配一页内存，用于存放proczero_code
   memmove(mem, proczero_code, sizeof(proczero_code));
-  pte_t *pte = walk(kernel_pagetable, (uint64)mem, 0);
+  pte_t *pte = walk(kernel_pagetable, (uint64)mem, 0); // 将proczero_code映射到内核页表中
+  // walk的实现在vm.c中
   if (pte == 0 || !(*pte & PTE_V))
       panic("userinit: page not mapped");
   *pte |= PTE_U | PTE_X; 
@@ -202,8 +206,8 @@ void usertrapret(void) {
   intr_off();
 
   uint64 x = r_sstatus();
-  x &= ~SSTATUS_SPP;
-  x |= SSTATUS_SPIE;
+  x &= ~SSTATUS_SPP;  // 清除 SPP 位，表示返回用户态
+  x |= SSTATUS_SPIE;  // 设置 SPIE 位，表示返回用户态时中断使能
   w_sstatus(x);
 
   w_sepc(p->trapframe->epc);
