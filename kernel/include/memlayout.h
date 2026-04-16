@@ -32,8 +32,8 @@
 #define PLIC_SCLAIM(hart) (PLIC + 0x201004 + (hart) * 0x2000)
 
 #define CLINT 0x2000000L /* CLINT计时器基地址 */
-#define CLINT_MTIMECMP(hartid) (CLINT + 0x4000 + 8 * (hartid))
-#define CLINT_MTIME (CLINT + 0xBFF8)
+#define CLINT_MTIMECMP(hartid) (CLINT + 0x4000 + 8 * (hartid))  /* 设置下一次时钟中断发生的时间 */ 
+#define CLINT_MTIME (CLINT + 0xBFF8)    /* 记录系统启动以来的“绝对时间” */
 
 /* 物理内存范围 */
 #define KERNBASE 0x80000000L                   /* 内核加载起始地址 */

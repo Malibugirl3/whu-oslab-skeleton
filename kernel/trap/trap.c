@@ -64,6 +64,7 @@ void sys_trap_handler(void) {
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
+  // printf("sys_trap_handler: sepc=%p, sstatus=%p, scause=%p\n", sepc, sstatus, scause);
 
   /* 验证：进入内核陷阱前，S-Mode 的中断应该已经关闭 */
   if ((sstatus & SSTATUS_SPP) == 0)
@@ -74,6 +75,8 @@ void sys_trap_handler(void) {
   if (scause & 0x8000000000000000L) {
     /* 这是一个异步中断 */
     uint64 irq = scause & 0xff;
+    // printf("sys_trap_handler: scause=%d\n", scause);
+
 
     switch (irq) {
     case 1:
@@ -92,7 +95,7 @@ void sys_trap_handler(void) {
        *      思考：为什么不应每次中断都打印？应如何控制打印频率？
        *   3. （Lab5 完成后追加）：若当前有正在运行的进程，调用 yield() 让出 CPU。
        * ================================================================ */
-      w_sip(r_sip() & ~SIP_SSIP);
+      w_sip(r_sip() & ~SIP_SSIP); // 清除软件中断待处理标志
 
       static int ticks = 0;
       ticks++;
@@ -103,23 +106,34 @@ void sys_trap_handler(void) {
 
     case 9:{
       /* 外部中断（如 UART 键盘）：Lab7 之前可暂不处理 */
-      int hart = 0;
+      // printf("sys_trap_handler: scause=%d\n", scause);
+
+      // printf("===================================dadvadv \n");
+      // int hart = r_mhartid(); // 这里有问题会保持奇怪的错误 sys_trap_handler: exception! scause=2, sepc=80000df6, stval=f14027f3
+      // 分析：原本的代码是直接赋值 hart=0 为什么可以运行？ 因为我们这个os只有一个内核所以直接赋值没问题，但是我觉得这样不是很好
+      // 因为假如说我们以后做成多核尤其我们可以很清楚的看到我们在空间的划分上还有很多地方都是使用hart编号来定位的数据也就是说这其实是一种为我们将来制作多核而进行的提前准备
+      // 但是这里之所以不能够直接使用t_mhartid()是因为我们当前是在S_MODE下
+      int hart = r_tp();
+      // printf("===================================\n");
       int irq = *(uint32*)PLIC_SCLAIM(hart);
+      // int irq = 10;
+      // printf("sys_trap_handler: irq=%d\n", irq);
       if (irq == UART0_IRQ) {
         char c = *(volatile char*)UART0;     // 读 UART 收到的字符
         uart_putc(c);  
       }
-      *(uint32*)PLIC_SCLAIM(hart) = irq;
+      *(uint32*)PLIC_SCLAIM(hart) = irq;    // 通知PLIC中断已经处理，可以继续处理其他中断
+      // while(1);
       break;
     }
     default:
-      printf("sys_trap_handler: unknown interrupt irq=%ld\n", irq);
+      printf("sys_trap_handler: unknown interrupt irq=%d\n", irq);
       break;
     }
 
   } else {
     /* 同步异常：内核代码出了错，无法恢复，直接 panic */
-    printf("sys_trap_handler: exception! scause=%ld, sepc=%p, stval=%p\n",
+    printf("sys_trap_handler: exception! scause=%d, sepc=%p, stval=%p\n",
            scause, sepc, r_stval());
     panic("sys_trap_handler: unexpected exception");
   }
