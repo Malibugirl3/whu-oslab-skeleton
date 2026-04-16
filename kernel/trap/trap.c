@@ -112,7 +112,7 @@ void sys_trap_handler(void) {
       // int hart = r_mhartid(); // 这里有问题会保持奇怪的错误 sys_trap_handler: exception! scause=2, sepc=80000df6, stval=f14027f3
       // 分析：原本的代码是直接赋值 hart=0 为什么可以运行？ 因为我们这个os只有一个内核所以直接赋值没问题，但是我觉得这样不是很好
       // 因为假如说我们以后做成多核尤其我们可以很清楚的看到我们在空间的划分上还有很多地方都是使用hart编号来定位的数据也就是说这其实是一种为我们将来制作多核而进行的提前准备
-      // 但是这里之所以不能够直接使用t_mhartid()是因为我们当前是在S_MODE下
+      // 但是这里之所以不能够直接使用t_mhartid()是因为我们当前是在S_MODE下不能直接使用
       int hart = r_tp();
       // printf("===================================\n");
       int irq = *(uint32*)PLIC_SCLAIM(hart);
