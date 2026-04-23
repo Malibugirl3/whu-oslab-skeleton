@@ -231,6 +231,8 @@ void usertrapret(void) {
 
   w_sepc(p->trapframe->epc);
 
+  w_sip(r_sip() & ~SIP_SSIP); // 清除 SSIP 位，防止无限重触发
+
   // asm volatile("sret");
   asm volatile(
       "mv sp, %0\n"

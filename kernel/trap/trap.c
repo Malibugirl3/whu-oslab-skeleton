@@ -164,6 +164,8 @@ void usertrap(void) {
         /* ---- 时钟中断（从用户态触发的软件中断）----
          * timervec 向 sip.SSIP 写1 → CPU 在用户态感知到 → 跳到 usertrap */
         w_sip(r_sip() & ~SIP_SSIP);   /* 清除 SSIP，防止无限重触发 */
+        if (myproc())
+          myproc()->trapframe->epc = r_sepc();
         static int ticks = 0;
         ticks++;
         if (ticks % 10 == 0) 
@@ -212,7 +214,10 @@ void usertrap(void) {
         */
 
 
-        uint64 num = myproc()->trapframe->a7;
+        uint64 num;
+        asm volatile("mv %0, a7" : "=r"(num));
+        // printf("================ usertrap: ecall ===============\n");
+
         if (num == 1) 
           printf("[proczero] first ecall! pid=%d\n", myproc()->pid);
         else if (num == 2) 
