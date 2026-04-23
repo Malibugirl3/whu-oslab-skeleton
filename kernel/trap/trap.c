@@ -45,6 +45,7 @@ void plicinit(void) {
   *(uint32*)(PLIC_PRIORITY + UART0_IRQ * 4) = 1;  // UART 优先级设为1
   *(uint32*)PLIC_SENABLE(hart) = (1 << UART0_IRQ); // 使能 IRQ10
   *(uint32*)PLIC_SPRIORITY(hart) = 0;              // 阈值设为0
+  *(uint32*)PLIC_SCLAIM(hart) = 0;                // 清除 CLAIM 寄存器
 }
 
 /* ================================================================
@@ -106,17 +107,17 @@ void sys_trap_handler(void) {
 
     case 9:{
       /* 外部中断（如 UART 键盘）：Lab7 之前可暂不处理 */
-      int hart = 0;
-      int irq = *(uint32*)PLIC_SCLAIM(hart);
-      if (irq == UART0_IRQ) {
+      int hart = r_tp();
+      int plic_irq = *(uint32*)PLIC_SCLAIM(hart);
+      if (plic_irq == UART0_IRQ) {
         char c = *(volatile char*)UART0;     // 读 UART 收到的字符
         uart_putc(c);  
       }
-      *(uint32*)PLIC_SCLAIM(hart) = irq;
+      *(uint32*)PLIC_SCLAIM(hart) = plic_irq;
       break;
     }
     default:
-      printf("sys_trap_handler: unknown interrupt irq=%ld\n", irq);
+      printf("sys_trap_handler: unknown interrupt irq=%d\n", irq);
       break;
     }
 
@@ -126,7 +127,7 @@ void sys_trap_handler(void) {
       intr_on();
       usertrap();
     } else {
-      printf("sys_trap_handler: exception! scause=%ld, sepc=%p, stval=%p\n",
+      printf("sys_trap_handler: exception! scause=%d, sepc=%p, stval=%p\n",
              scause, sepc, r_stval());
       panic("sys_trap_handler: unexpected exception");
     }
@@ -154,37 +155,75 @@ void usertrap(void) {
   /* 立即切换到内核态陷阱向量（防止处理用户陷阱时再发生用户态中断）*/
   w_stvec((uint64)sys_trap_vector);
 
-  uint64 cause = r_scause();
+  uint64 scause = r_scause();
 
-  if (cause == 8) {
-    /* 来自 U-Mode 的 ecall（系统调用）*/
-
-    /* 允许中断（系统调用可能涉及耗时 I/O 操作）*/
-    intr_on();
-    myproc()->trapframe->epc = r_sepc() + 4;
-
-    uint64 num = myproc()->trapframe->a7;
-    if (num == 1)
-        printf("[proczero] first ecall! pid=%d\n", myproc()->pid);
-    else if (num == 2)    
-        printf("[proczero] second ecall! pid=%d\n", myproc()->pid);
-
+  if (scause & 0x8000000000000000L) {
+    uint64 irq = scause & 0xff;
+    switch (irq) {
+      case 1:
+        /* ---- 时钟中断（从用户态触发的软件中断）----
+         * timervec 向 sip.SSIP 写1 → CPU 在用户态感知到 → 跳到 usertrap */
+        w_sip(r_sip() & ~SIP_SSIP);   /* 清除 SSIP，防止无限重触发 */
+        static int ticks = 0;
+        ticks++;
+        if (ticks % 10 == 0) 
+          printf("U-Mode Tick! (%d)\n", ticks);
+        if (myproc() && myproc()->status == TASK_RUNNING)
+          yield();
+        break;
+      
+      case 9:{
+        int hart = r_tp();
+        int plic_irq = *(uint32*)PLIC_SCLAIM(hart);
+        if (plic_irq == UART0_IRQ) {
+          char c = *(volatile char*)UART0;     // 读 UART 收到的字符
+          uart_putc(c);  
+        }
+        *(uint32*)PLIC_SCLAIM(hart) = plic_irq;
+        break;
+      }
+      default:
+        printf("usertrap: unknown interrupt irq=%d\n", irq);
+        panic("usertrap: unknown interrupt");
+    }
+      
     usertrapret();
-
-    /* ================================================================
-     * TODO [Lab6-任务2]：
-     *   将被打断的 PC（sepc）向后移动 4 字节，跳过 ecall 指令。
-     *   需要通过 myproc()->trapframe->epc 访问该字段并对其加 4。
-     *   如不执行此步，返回后用户态会无限重复执行 ecall！
-     * ================================================================ */
-
-    /* 分发给系统调用处理函数 */
-    // syscall();
-
+  
   } else {
     /* 用户态发生异常（如非法内存访问），直接终止该进程 */
-    printf("usertrap: unexpected scause=%ld\n", cause);
-    /* 理想情况下应该 exit(-1) 杀死该进程，暂不实现 */
-    panic("usertrap");
+    uint64 irq2  = scause & 0xff;
+    switch (irq2) {
+      case 8:
+        intr_on();
+        myproc()->trapframe->epc = r_sepc() + 4;
+        /* ================================================================
+        * TODO [Lab6-任务2]：
+        *   将被打断的 PC（sepc）向后移动 4 字节，跳过 ecall 指令。
+        *   需要通过 myproc()->trapframe->epc 访问该字段并对其加 4。
+        *   如不执行此步，返回后用户态会无限重复执行 ecall！
+        * ================================================================ */
+
+        /* 分发给系统调用处理函数 */
+        // syscall();
+        /*
+        * TODO [Lab6-任务]：将下方的临时逻辑替换为 syscall() 通用分发器。
+        * 当前直接读取 a7 并 hardcode 处理，仅用于 proczero 初始化验证。
+        * Lab6 中应改为：syscall();
+        */
+
+
+        uint64 num = myproc()->trapframe->a7;
+        if (num == 1) 
+          printf("[proczero] first ecall! pid=%d\n", myproc()->pid);
+        else if (num == 2) 
+          printf("[proczero] second ecall! pid=%d\n", myproc()->pid);
+
+        usertrapret();
+        break;
+      default:
+        printf("usertrap: unknown interrupt irq=%d\n", irq2);
+        panic("usertrap: else p unknown interrupt");
+    }
+    panic("usertrap: unexpected exception");
   }
 }

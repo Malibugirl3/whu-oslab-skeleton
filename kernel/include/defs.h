@@ -19,8 +19,14 @@ struct dirent;
  * 通用工具函数
  * 文件：kernel/lib/string.c
  * ====================================================== */
-void* memset(void *dst, int c, uint64 n);
-void* memmove(void *dst, const void *src, uint64 n);
+void*  memset(void *dst, int c, uint64 n);
+int    memcmp(const void *v1, const void *v2, uint64 n);
+void*  memmove(void *dst, const void *src, uint64 n);
+void*  memcpy(void *dst, const void *src, uint64 n);
+int    strlen(const char *s);
+int    strncmp(const char *p, const char *q, uint64 n);
+char*  strncpy(char *s, const char *t, int n);
+char*  safestrcpy(char *s, const char *t, int n);
 
 /* ======================================================
  * Lab1 新增：uart 串口驱动

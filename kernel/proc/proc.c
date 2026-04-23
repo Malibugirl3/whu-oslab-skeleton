@@ -182,21 +182,35 @@ static uint8 proczero_code[] = {
 
 void userinit(void) {
   struct proc *p = allocproc();
-
+  if (p == 0) 
+    panic("userinit: allocproc failed");
+  
+  // 分配内核栈
   p->kstack = (uint64)kalloc();
+  if (p->kstack == 0)
+    panic("userinit: kstack alloc failed");
   p->context.sp = p->kstack + PGSIZE;
 
-  char *mem = kalloc(); // 分配一页内存，用于存放proczero_code
+  char *mem = kalloc(); // 分配一页内存，用于存放proczero_code，返回的是虚拟地址
+  if (mem == 0)
+    panic("userinit: mem alloc failed");
   memmove(mem, proczero_code, sizeof(proczero_code));
-  pte_t *pte = walk(kernel_pagetable, (uint64)mem, 0); // 将proczero_code映射到内核页表中
+  
+  pte_t *pte = walk(kernel_pagetable, (uint64)mem, 0); 
+  // 将proczero_code映射到内核页表中
   // walk的实现在vm.c中
   if (pte == 0 || !(*pte & PTE_V))
       panic("userinit: page not mapped");
   *pte |= PTE_U | PTE_X; 
+  sfence_vma(); // 刷新TLB
+
+
   p->trapframe->epc = (uint64)mem;
   p->trapframe->sp = (uint64)mem + PGSIZE;
 
   p->sz = PGSIZE;
+  memset(p->name, 0, 16);
+  memmove(p->name, "proczero", 9);
   p->status = TASK_READY;
 }
 
@@ -205,6 +219,11 @@ void usertrapret(void) {
 
   intr_off();
 
+  w_stvec((uint64)usertrap);
+
+  p->trapframe->kernel_sp = p->kstack + PGSIZE;
+  p->trapframe->kernel_trap = (uint64)usertrap;
+
   uint64 x = r_sstatus();
   x &= ~SSTATUS_SPP;  // 清除 SPP 位，表示返回用户态
   x |= SSTATUS_SPIE;  // 设置 SPIE 位，表示返回用户态时中断使能
@@ -212,5 +231,10 @@ void usertrapret(void) {
 
   w_sepc(p->trapframe->epc);
 
-  asm volatile("sret");
+  // asm volatile("sret");
+  asm volatile(
+      "mv sp, %0\n"
+      "sret\n"
+      : : "r"(p->kstack + PGSIZE)
+  );
 }
