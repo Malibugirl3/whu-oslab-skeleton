@@ -186,7 +186,7 @@ void usertrap(void) {
         printf("usertrap: unknown interrupt irq=%d\n", irq);
         panic("usertrap: unknown interrupt");
     }
-      
+      // 
     usertrapret();
   
   } else {
