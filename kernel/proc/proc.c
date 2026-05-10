@@ -14,6 +14,9 @@
 #include "riscv.h"
 #include "types.h"
 
+extern char user_trap_vector[];
+extern void userret(struct trapframe*);
+
 /* 全局进程表和 CPU 描述符（在 proc.h 中 extern 声明）*/
 struct proc proc[NPROC];
 struct cpu cpus[NCPU];
@@ -172,11 +175,25 @@ void yield(void) {
 
 
 static uint8 proczero_code[] = {
-  0x93, 0x08, 0x10, 0x00,  // li a7, 1
+  // 0x93, 0x08, 0x10, 0x00,  // li a7, 1
+  // 0x73, 0x00, 0x00, 0x00,  // ecall
+  // 0x93, 0x08, 0x20, 0x00,  // li a7, 2
+  // 0x73, 0x00, 0x00, 0x00,  // ecall
+  // 0x6f, 0x00, 0x00, 0x00,  // j .（死循环）
+  0x13, 0x05, 0x10, 0x00,  // li a0, 1
+  0x97, 0x05, 0x00, 0x00,  // auipc a1, 0
+  0x93, 0x85, 0x85, 0x01,  // addi a1, a1, 24
+  0x13, 0x06, 0x10, 0x01,  // li a2, 17
+  0x93, 0x08, 0x00, 0x01,  // li a7, 16
   0x73, 0x00, 0x00, 0x00,  // ecall
-  0x93, 0x08, 0x20, 0x00,  // li a7, 2
-  0x73, 0x00, 0x00, 0x00,  // ecall
-  0x6f, 0x00, 0x00, 0x00,  // j .（死循环）
+  0x6f, 0x00, 0x00, 0x00,  // j .
+
+  // "Hello from user!\n"
+  0x48, 0x65, 0x6c, 0x6c,
+  0x6f, 0x20, 0x66, 0x72,
+  0x6f, 0x6d, 0x20, 0x75,
+  0x73, 0x65, 0x72, 0x21,
+  0x0a,
 };
 
 
@@ -196,6 +213,8 @@ void userinit(void) {
     panic("userinit: mem alloc failed");
   memmove(mem, proczero_code, sizeof(proczero_code));
   
+  printf("userinit: mem=%p msg=%p\n", mem, mem + 0x1c);
+
   pte_t *pte = walk(kernel_pagetable, (uint64)mem, 0); 
   // 将proczero_code映射到内核页表中
   // walk的实现在vm.c中
@@ -219,7 +238,8 @@ void usertrapret(void) {
 
   intr_off();
 
-  w_stvec((uint64)usertrap);
+  w_stvec((uint64)user_trap_vector);
+  w_sscratch((uint64)p->trapframe); // 保存trapframe地址到sscratch
 
   p->trapframe->kernel_sp = p->kstack + PGSIZE;
   p->trapframe->kernel_trap = (uint64)usertrap;
@@ -233,10 +253,11 @@ void usertrapret(void) {
 
   w_sip(r_sip() & ~SIP_SSIP); // 清除 SSIP 位，防止无限重触发
 
-  // asm volatile("sret");
-  asm volatile(
-      "mv sp, %0\n"
-      "sret\n"
-      : : "r"(p->kstack + PGSIZE)
-  );
+  userret(p->trapframe);
+  // // asm volatile("sret");
+  // asm volatile(
+  //     "mv sp, %0\n"
+  //     "sret\n"
+  //     : : "r"(p->kstack + PGSIZE)
+  // );
 }

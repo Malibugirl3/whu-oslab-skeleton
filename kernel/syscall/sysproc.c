@@ -25,7 +25,8 @@ uint64 sys_getpid(void) {
    * TODO [Lab6-任务4-步骤1]：
    *   调用 myproc() 获取当前进程的 PCB 指针，返回其 pid 字段。
    * ================================================================ */
-  return -1; /* 删除这行，替换为正确逻辑 */
+   struct proc *p = myproc();
+   return p->pid;
 }
 
 /* ================================================================
@@ -37,8 +38,17 @@ uint64 sys_exit(void) {
    * TODO [Lab6-任务4-步骤2（可选）]：
    *   实现进程退出。简化版：打印退出信息，将进程状态设为 ZOMBIE，然后切回调度器。
    * ================================================================ */
-  panic("sys_exit: not implemented");
-  return 0;
+   struct proc *p = myproc();
+   int code = myproc()->trapframe->a0;
+
+   printf("Process %d exited with status %d\n", p->pid, code);
+
+   p->status = TASK_ZOMBIE;
+
+   swtch(&p->context, &mycpu()->context);
+   
+   panic("sys_exit: returned");
+   return 0;
 }
 
 /* ================================================================
@@ -62,6 +72,19 @@ uint64 sys_write(void) {
    *   4. 设置 p->status = TASK_ZOMBIE
    *   5. 调用 swtch 切回调度器：swtch(&p->context, &mycpu()->context);
    * ================================================================ */
-  panic("sys_write: not implemented");
-  return -1;
+   struct proc *p = myproc();
+   int fd = p->trapframe->a0;
+   uint64 buf = p->trapframe->a1;
+   int count = p->trapframe->a2;
+
+   printf("sys_write: fd=%d buf=%p count=%d\n", fd, buf, count);
+   while(1);
+
+   if (fd != 1)
+     return -1;
+   char *s = (char *)buf;
+   for (int i = 0; i < count; i++) {
+     uart_putc(s[i]);
+   }
+   return count;
 }

@@ -77,7 +77,9 @@ SRCS = \
     kernel/trap/trap.c \
     kernel/lib/string.c \
     kernel/proc/proc.c \
-    kernel/proc/swtch.S 
+    kernel/proc/swtch.S \
+	kernel/syscall/syscall.c \
+	kernel/syscall/sysproc.c
 
 KERNEL  = kernel.elf
 LDSCRIPT = kernel.ld

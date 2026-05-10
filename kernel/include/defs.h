@@ -8,6 +8,7 @@
 
 #include "types.h"
 
+struct cpu;
 struct proc;
 struct context;
 struct trapframe;
@@ -89,6 +90,7 @@ void usertrapret(void);
 void procinit(void);
 void userinit(void);
 struct proc *myproc(void);
+struct cpu *mycpu(void);
 int allocpid(void);
 struct proc *allocproc(void);
 void scheduler(void) __attribute__((noreturn));
@@ -108,6 +110,7 @@ void swtch(struct context *old, struct context *new);
  * 文件：kernel/syscall/syscall.c
  * ====================================================== */
 void syscall(void);
+int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint len);
 
 /* ======================================================
  * Lab6 新增：系统调用具体实现
@@ -119,6 +122,8 @@ uint64 sys_fork(void);
 uint64 sys_wait(void);
 uint64 sys_sbrk(void);
 uint64 sys_write(void);
+void argint(int n, int *ip);
+void argaddr(int n, uint64 *ip);
 
 /* ======================================================
  * Lab7 新增：块缓冲层

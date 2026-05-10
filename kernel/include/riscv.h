@@ -56,6 +56,7 @@ static inline void w_mepc(uint64 x) {
 #define SSTATUS_UPIE (1L << 4)
 #define SSTATUS_SIE (1L << 1) /* S态全局中断使能位（当前是否允许中断）*/
 #define SSTATUS_UIE (1L << 0)
+#define SSTATUS_SUM (1L << 18) /* 用户态内存访问权限：0=禁止，1=允许 */
 
 static inline uint64 r_sstatus() {
   uint64 x;
@@ -177,6 +178,10 @@ static inline uint64 r_mhartid() {
 /* 机器态暂存寄存器 mscratch：M-Mode 临时存储，timervec 用来找 timer_scratch */
 static inline void w_mscratch(uint64 x) {
   asm volatile("csrw mscratch, %0" : : "r"(x));
+}
+
+static inline void w_sscratch(uint64 x) {
+  asm volatile("csrw sscratch, %0" : : "r"(x));
 }
 
 /* 线程指针寄存器 tp：在本实验框架中用来存当前 hartid，方便 mycpu() 使用 */

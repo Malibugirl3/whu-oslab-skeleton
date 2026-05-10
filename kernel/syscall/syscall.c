@@ -38,7 +38,12 @@
  *   后续可按需添加更多系统调用。
  * ================================================================ */
 static uint64 (*syscalls[20])(void) = {
-    /* [SYS_getpid] = sys_getpid, */ /* <-- 取消注释并添加这行 */
+    // [SYS_fork] = sys_fork,
+    [SYS_exit] = sys_exit,
+    // [SYS_wait] = sys_wait,
+    [SYS_getpid] = sys_getpid,
+    // [SYS_sbrk] = sys_sbrk,
+    [SYS_write] = sys_write,
 };
 
 /* ================================================================
@@ -58,4 +63,41 @@ void syscall(void) {
    *      将返回值存入 p->trapframe->a0（用户程序会从 a0 读取返回值）。
    *   3. 若非法，打印错误并将 p->trapframe->a0 = -1（返回错误码）。
    * ================================================================ */
+   if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+      p->trapframe->a0 = syscalls[num]();
+   } else {
+      printf("unknown syscall %d\n", num);
+      p->trapframe->a0 = -1;
+   }
 }
+
+static uint64 argraw(int n) {
+  struct proc *p = myproc();
+
+  switch (n) {
+    case 0:
+      return p->trapframe->a0;
+    case 1:
+      return p->trapframe->a1;
+    case 2:
+      return p->trapframe->a2;
+    case 3:
+      return p->trapframe->a3;
+    case 4:
+      return p->trapframe->a4;
+    case 5:
+      return p->trapframe->a5;
+    default:
+      panic("argraw: n=%d", n);
+  }
+}
+
+
+void argint(int n, int *ip) {
+  *ip = (int)argraw(n);
+}
+
+void argaddr(int n, uint64 *ip) {
+  *ip = argraw(n);
+}
+

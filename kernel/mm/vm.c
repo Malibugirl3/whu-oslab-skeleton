@@ -194,3 +194,39 @@ void kvminithart(void) {
   w_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
 }
+
+/*
+ * copyin — 从用户态页表中复制数据到内核态
+ *
+ * 参数：
+ *   pagetable — 用户态页表
+ *   dst       — 内核态目标地址
+ *   srcva     — 用户态源虚拟地址
+ *   len       — 复制长度
+ *
+ * 返回值：0 表示成功，-1 表示失败
+ */
+int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
+  uint64 old_sstatus = r_sstatus();
+
+  for (uint64 i = 0; i < len; i++) {
+    uint64 va = srcva + i;  // 
+    pte_t *pte = walk(pagetable, va, 0);
+
+    if (pte == 0 ||
+       !(*pte & PTE_V) ||
+       !(*pte & PTE_U) ||
+       !(*pte & PTE_R)) 
+      return -1;  // 权限不足
+
+    uint64 pa = PTE2PA(*pte); // 
+
+    uint64 offset = va & (PGSIZE - 1);
+
+    w_sstatus(old_sstatus | SSTATUS_SUM); 
+    dst[i] = *(char *)(pa + offset); 
+    w_sstatus(old_sstatus);
+  }
+
+  return 0;
+}

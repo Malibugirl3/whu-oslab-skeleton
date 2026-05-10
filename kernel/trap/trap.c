@@ -190,14 +190,17 @@ void usertrap(void) {
     }
       // 
     usertrapret();
+    return;
   
   } else {
     /* 用户态发生异常（如非法内存访问），直接终止该进程 */
     uint64 irq2  = scause & 0xff;
     switch (irq2) {
       case 8:
-        intr_on();
         myproc()->trapframe->epc = r_sepc() + 4;
+
+        intr_on();
+
         /* ================================================================
         * TODO [Lab6-任务2]：
         *   将被打断的 PC（sepc）向后移动 4 字节，跳过 ecall 指令。
@@ -206,7 +209,10 @@ void usertrap(void) {
         * ================================================================ */
 
         /* 分发给系统调用处理函数 */
-        // syscall();
+        syscall();
+
+        usertrapret();
+        return;
         /*
         * TODO [Lab6-任务]：将下方的临时逻辑替换为 syscall() 通用分发器。
         * 当前直接读取 a7 并 hardcode 处理，仅用于 proczero 初始化验证。
@@ -214,20 +220,20 @@ void usertrap(void) {
         */
 
 
-        uint64 num;
-        asm volatile("mv %0, a7" : "=r"(num));
-        // printf("================ usertrap: ecall ===============\n");
+      //   uint64 num;
+      //   asm volatile("mv %0, a7" : "=r"(num));
+      //   // printf("================ usertrap: ecall ===============\n");
 
-        if (num == 1) 
-          printf("[proczero] first ecall! pid=%d\n", myproc()->pid);
-        else if (num == 2) 
-          printf("[proczero] second ecall! pid=%d\n", myproc()->pid);
+      //   if (num == 1) 
+      //     printf("[proczero] first ecall! pid=%d\n", myproc()->pid);
+      //   else if (num == 2) 
+      //     printf("[proczero] second ecall! pid=%d\n", myproc()->pid);
 
-        usertrapret();
-        break;
-      default:
-        printf("usertrap: unknown interrupt irq=%d\n", irq2);
-        panic("usertrap: else p unknown interrupt");
+      //   usertrapret();
+      //   break;
+      // default:
+      //   printf("usertrap: unknown interrupt irq=%d\n", irq2);
+      //   panic("usertrap: else p unknown interrupt");
     }
     panic("usertrap: unexpected exception");
   }
