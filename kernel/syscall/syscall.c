@@ -88,7 +88,8 @@ static uint64 argraw(int n) {
     case 5:
       return p->trapframe->a5;
     default:
-      panic("argraw: n=%d", n);
+      printf("argraw: invalid n=%d\n", n);
+      panic("argraw");
   }
 }
 

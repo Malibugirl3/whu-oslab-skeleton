@@ -110,7 +110,7 @@ void swtch(struct context *old, struct context *new);
  * 文件：kernel/syscall/syscall.c
  * ====================================================== */
 void syscall(void);
-int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint len);
+int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
 
 /* ======================================================
  * Lab6 新增：系统调用具体实现
