@@ -16,6 +16,7 @@ CC      = $(CROSS)gcc
 LD      = $(CROSS)ld
 OBJDUMP = $(CROSS)objdump
 OBJCOPY = $(CROSS)objcopy
+XXD     = xxd
 
 # ============================================================
 # 编译标志
@@ -31,6 +32,12 @@ CFLAGS = -nostdlib -fno-builtin -mcmodel=medany \
          -march=rv64gc -mabi=lp64d \
          -g -Wall -ffreestanding \
          -I kernel/include
+
+USER_CFLAGS = -nostdlib -fno-builtin -ffreestanding \
+              -fno-asynchronous-unwind-tables \
+              -mcmodel=medany -march=rv64gc -mabi=lp64d \
+              -I user -I kernel/include
+			
 
 # ============================================================
 # TODO [Lab1-任务4]：
@@ -84,12 +91,35 @@ SRCS = \
 KERNEL  = kernel.elf
 LDSCRIPT = kernel.ld
 
+USER_INIT   = user/initcode
+USER_ELF    = $(USER_INIT).elf
+USER_BIN    = $(USER_INIT).bin
+INITCODE_H  = kernel/proc/initcode.h
+
 # ============================================================
 # 构建目标
 # ============================================================
 all: $(KERNEL)
 
-$(KERNEL): $(SRCS) $(LDSCRIPT)
+$(USER_ELF): user/init.c user/usys.S user/user.h
+	$(CC) $(USER_CFLAGS) -Ttext 0 -e main user/init.c user/usys.S -o $@
+	@echo "======================================"
+	@echo " 用户程序编译成功：$(USER_ELF)"
+	@echo "======================================"
+
+$(USER_BIN): $(USER_ELF)
+	$(OBJCOPY) -S -O binary $(USER_ELF) $(USER_BIN)
+	@echo "======================================"
+	@echo " 用户程序二进制生成成功：$(USER_BIN)"
+	@echo "======================================"
+
+$(INITCODE_H): $(USER_BIN)
+	$(XXD) -i $(USER_BIN) > $(INITCODE_H)
+	@echo "======================================"
+	@echo " 初始化代码头文件生成成功：$(INITCODE_H)"
+	@echo "======================================"
+
+$(KERNEL): $(INITCODE_H) $(SRCS) $(LDSCRIPT)
 	$(CC) $(CFLAGS) -T $(LDSCRIPT) $(SRCS) -o $@
 	@echo "======================================"
 	@echo " 内核编译成功：$(KERNEL)"
@@ -125,6 +155,6 @@ debug: $(KERNEL)
 
 # 清除编译产物
 clean:
-	rm -f $(KERNEL) *.o *.d
+	rm -f $(KERNEL) *.o *.d $(USER_ELF) $(USER_BIN) $(INITCODE_H)
 
 .PHONY: all run debug clean

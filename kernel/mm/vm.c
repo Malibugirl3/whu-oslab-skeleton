@@ -54,19 +54,19 @@ pte_t *walk(pagetable_t pagetable, uint64 va, int alloc) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
       /* 该 PTE 无效：中间级页表不存在 */
-      if (!alloc)
+      if (!alloc) {
+        printf("==== walk: pte not valid and alloc is 0 ====\n");
         return 0; /* 不允许分配，返回失败 */
+      }
 
       /* 分配一个新的物理页作为下一级页表 */
       pagetable = (pagetable_t)kalloc();
-      if (pagetable == 0)
+      if (pagetable == 0) {
+        printf("==== walk: pagetable is 0 ====\n");
         return 0; /* 内存耗尽 */
+      }
 
-
-      uint64 *p = (uint64 *)pagetable;
-      // TODO: 未来把这里改成调用的 memset
-      for (int i = 0; i < PGSIZE / sizeof(uint64); i++)
-        p[i] = 0;
+      memset(pagetable, 0, PGSIZE);
 
       *pte = PA2PTE(pagetable) | PTE_V;
     }
@@ -217,6 +217,7 @@ void kvminithart(void) {
 
     pte_t *pte = walk(pagetable, va0, 0); // 获取页表项
     if (pte == 0 || !(*pte & PTE_V) || !(*pte & PTE_U) || !(*pte & PTE_R)) {
+      printf("copyin: bad user address %p\n", srcva);
       w_sstatus(old_sstatus);
       return -1;
     }

@@ -13,6 +13,7 @@
 #include "param.h"
 #include "riscv.h"
 #include "types.h"
+#include "initcode.h"
 
 extern char user_trap_vector[];
 extern void userret(struct trapframe*);
@@ -174,27 +175,6 @@ void yield(void) {
 }
 
 
-static uint8 proczero_code[] = {
-  // 0x93, 0x08, 0x10, 0x00,  // li a7, 1
-  // 0x73, 0x00, 0x00, 0x00,  // ecall
-  // 0x93, 0x08, 0x20, 0x00,  // li a7, 2
-  // 0x73, 0x00, 0x00, 0x00,  // ecall
-  // 0x6f, 0x00, 0x00, 0x00,  // j .（死循环）
-  0x13, 0x05, 0x10, 0x00,  // li a0, 1
-  0x97, 0x05, 0x00, 0x00,  // auipc a1, 0
-  0x93, 0x85, 0x85, 0x01,  // addi a1, a1, 24
-  0x13, 0x06, 0x10, 0x01,  // li a2, 17
-  0x93, 0x08, 0x00, 0x01,  // li a7, 16
-  0x73, 0x00, 0x00, 0x00,  // ecall
-  0x6f, 0x00, 0x00, 0x00,  // j .
-
-  // "Hello from user!\n"
-  0x48, 0x65, 0x6c, 0x6c,
-  0x6f, 0x20, 0x66, 0x72,
-  0x6f, 0x6d, 0x20, 0x75,
-  0x73, 0x65, 0x72, 0x21,
-  0x0a,
-};
 
 
 void userinit(void) {
@@ -208,24 +188,25 @@ void userinit(void) {
     panic("userinit: kstack alloc failed");
   p->context.sp = p->kstack + PGSIZE;
 
+  if (user_initcode_bin_len > PGSIZE) 
+    panic("userinit: initcode too large for one page");
+
   char *mem = kalloc(); // 分配一页内存，用于存放proczero_code，返回的是虚拟地址
   if (mem == 0)
     panic("userinit: mem alloc failed");
-  memmove(mem, proczero_code, sizeof(proczero_code));
+  memmove(mem, user_initcode_bin, user_initcode_bin_len);
   
   printf("userinit: mem=%p msg=%p\n", mem, mem + 0x1c);
 
-  pte_t *pte = walk(kernel_pagetable, (uint64)mem, 0); 
-  // 将proczero_code映射到内核页表中
-  // walk的实现在vm.c中
-  if (pte == 0 || !(*pte & PTE_V))
-      panic("userinit: page not mapped");
-  *pte |= PTE_U | PTE_X; 
+  if (mappages(kernel_pagetable, (uint64)mem, 0, PGSIZE,
+                PTE_R | PTE_W | PTE_X | PTE_U) != 0)
+    panic("userinit: map initcode failed");
+  
   sfence_vma(); // 刷新TLB
 
-
-  p->trapframe->epc = (uint64)mem;
-  p->trapframe->sp = (uint64)mem + PGSIZE;
+  // 默认从0开始执行
+  p->trapframe->epc = 0;
+  p->trapframe->sp = PGSIZE;
 
   p->sz = PGSIZE;
   memset(p->name, 0, 16);

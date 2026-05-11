@@ -1,5 +1,7 @@
-kernel.elf
+*.elf
 *.o
 *.d
+*.bin
 .DS_Store
 .vscode/
+kernel/proc/initcode.h
