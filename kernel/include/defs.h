@@ -111,6 +111,7 @@ void swtch(struct context *old, struct context *new);
  * ====================================================== */
 void syscall(void);
 int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
+int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
 
 /* ======================================================
  * Lab6 新增：系统调用具体实现
@@ -124,6 +125,7 @@ uint64 sys_sbrk(void);
 uint64 sys_write(void);
 void argint(int n, int *ip);
 void argaddr(int n, uint64 *ip);
+int argstr(int n, char *buf, int max);
 
 /* ======================================================
  * Lab7 新增：块缓冲层

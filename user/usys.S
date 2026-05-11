@@ -53,3 +53,22 @@ exit:
  *     ecall
  *     ret
  * ================================================================ */
+
+    .global write
+write:
+    li a7, SYS_write
+    ecall
+    ret
+  
+
+    .global fork
+fork:
+    li a7, SYS_fork
+    ecall
+    ret
+    
+    .global wait
+wait:
+    li a7, SYS_wait
+    ecall
+    ret

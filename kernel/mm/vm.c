@@ -206,27 +206,94 @@ void kvminithart(void) {
  *
  * 返回值：0 表示成功，-1 表示失败
  */
-int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
+ int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len) {
+  uint64 n, va0, pa0;
   uint64 old_sstatus = r_sstatus();
 
-  for (uint64 i = 0; i < len; i++) {
-    uint64 va = srcva + i;  // 
-    pte_t *pte = walk(pagetable, va, 0);
+  w_sstatus(old_sstatus | SSTATUS_SUM);
 
-    if (pte == 0 ||
-       !(*pte & PTE_V) ||
-       !(*pte & PTE_U) ||
-       !(*pte & PTE_R)) 
-      return -1;  // 权限不足
+  while (len > 0) {
+    va0 = PGROUNDDOWN(srcva);
 
-    uint64 pa = PTE2PA(*pte); // 
+    pte_t *pte = walk(pagetable, va0, 0); // 获取页表项
+    if (pte == 0 || !(*pte & PTE_V) || !(*pte & PTE_U) || !(*pte & PTE_R)) {
+      w_sstatus(old_sstatus);
+      return -1;
+    }
 
-    uint64 offset = va & (PGSIZE - 1);
+    pa0 = PTE2PA(*pte); // 获取物理页号
 
-    w_sstatus(old_sstatus | SSTATUS_SUM); 
-    dst[i] = *(char *)(pa + offset); 
-    w_sstatus(old_sstatus);
+    n = PGSIZE - (srcva - va0);
+    if (n > len)
+      n = len;
+
+    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+
+    len -= n;
+    dst += n;
+    srcva = va0 + PGSIZE;
   }
 
+  w_sstatus(old_sstatus);
   return 0;
+}
+
+
+/*
+ * 复制字符串从用户态页表到内核态
+ * 参数：
+ *   pagetable：用户态页表
+ *   dst：内核态目标地址
+ *   srcva：用户态源虚拟地址
+ *   max：最大长度
+ * 返回：
+ *   0：成功
+ *   -1：失败
+ */
+int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
+  uint64 va0, pa0;
+  int got_null = 0;
+  uint64 old_sstatus = r_sstatus();
+
+  w_sstatus(old_sstatus | SSTATUS_SUM);
+
+  while (!got_null && max > 0) {
+    va0 = PGROUNDDOWN(srcva);
+
+    pte_t *pte = walk(pagetable, va0, 0);
+    if (pte == 0 || !(*pte & PTE_V) || !(*pte & PTE_U) || !(*pte & PTE_R)) {
+      w_sstatus(old_sstatus);
+      return -1;
+    }
+
+    pa0 = PTE2PA(*pte);
+
+    uint64 n = PGSIZE - (srcva - va0);
+    if (n > max)
+      n = max;
+
+    char *p = (char *)(pa0 + (srcva - va0));
+
+    while (n) {
+      char c = *p;
+      *dst = c;
+
+      dst++;
+      p++;
+      srcva++;
+      max--;
+      n--;
+
+      if (c == '\0') {
+        got_null = 1;
+        break;
+      }
+    }
+  }
+
+  w_sstatus(old_sstatus);
+
+  if (got_null)
+    return 0;
+  return -1;
 }

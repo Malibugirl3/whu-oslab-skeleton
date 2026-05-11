@@ -102,3 +102,23 @@ void argaddr(int n, uint64 *ip) {
   *ip = argraw(n);
 }
 
+/*
+ * 获取字符串参数
+ * 参数：
+ *   n：参数索引
+ *   buf：用户缓冲区地址
+ *   max：最大长度
+ * 返回：
+ *   0：成功
+ *   -1：失败
+ */
+int argstr(int n, char *buf, int max) {
+  uint64 addr;
+
+  argaddr(n, &addr);
+
+  if (copyinstr(kernel_pagetable, buf, addr, max) < 0)  // 先打通
+    return -1;
+  
+  return 0;
+}

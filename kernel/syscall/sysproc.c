@@ -51,40 +51,57 @@ uint64 sys_exit(void) {
    return 0;
 }
 
-/* ================================================================
- * sys_write — 向文件描述符写数据
- *
- * 用户接口：int write(int fd, const void *buf, int count)
- * 参数从陷阱帧读取：
- *   fd    = trapframe->a0
- *   buf   = trapframe->a1（用户虚拟地址，不能直接在内核读！）
- *   count = trapframe->a2
- *
- * 简化版：如果 fd==1（标准输出），直接把字符打印到串口。
- * ================================================================ */
+
 uint64 sys_write(void) {
   /* ================================================================
-   * TODO [Lab6-任务4-步骤3（进阶）]：
-   *   实现简化版 sys_write：
-   *   1. int fd = myproc()->trapframe->a0;
-   *   2. 获取出参 n（系统调用的第一个参数，可用 argint 拿取），并赋给 p->xstate
-   *   3. 打印类似 "Process [pid] exited with code [n]\n"
-   *   4. 设置 p->status = TASK_ZOMBIE
-   *   5. 调用 swtch 切回调度器：swtch(&p->context, &mycpu()->context);
-   * ================================================================ */
-   struct proc *p = myproc();
-   int fd = p->trapframe->a0;
-   uint64 buf = p->trapframe->a1;
-   int count = p->trapframe->a2;
+  * sys_write — Lab6 简化版标准输出
+  *
+  * 当前只支持 fd == 1，即标准输出/串口输出。
+  * 参数通过 argint/argaddr 从 trapframe 中提取：
+  *   arg0: fd
+  *   arg1: 用户缓冲区地址 buf
+  *   arg2: 写入长度 count
+  *
+  * 为避免用户传入超大 count 导致内核栈溢出，本实现使用小缓冲区
+  * 分块 copyin，再逐字节输出到 UART。
+  *
+  * Lab7 引入文件系统后，这里应改为：
+  *   1. 根据 fd 查找当前进程打开的 struct file；
+  *   2. 调用 filewrite(f, buf, count)；
+  *   3. 由 console/file 层分别处理终端输出和磁盘文件写入。
+  * ================================================================ */
 
-   printf("sys_write: fd=%d buf=%p count=%d\n", fd, buf, count);
-   while(1);
+  int fd;
+  uint64 buf;
+  int count;
 
-   if (fd != 1)
-     return -1;
-   char *s = (char *)buf;
-   for (int i = 0; i < count; i++) {
-     uart_putc(s[i]);
-   }
-   return count;
+  argint(0, &fd); // 获取文件描述符
+  argaddr(1, &buf); // 获取用户态地址
+  argint(2, &count); // 获取写入字节数
+
+  if (fd != 1 || count < 0)
+    return -1;
+  
+  char kbuf[64];
+  int written = 0;
+    
+  while (written < count) {
+    int n = count - written;
+    if (n > sizeof(kbuf))
+      n = sizeof(kbuf);
+    
+    if (copyin(kernel_pagetable, kbuf, buf + written, n) < 0) {
+      if (written == 0)
+        return -1;
+      break;
+    }
+    
+    for (int i = 0; i < n; i++)
+      uart_putc(kbuf[i]);
+    
+    written += n;
+  }
+    
+  return written;
+
 }
