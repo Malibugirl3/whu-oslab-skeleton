@@ -240,18 +240,50 @@ void kvminithart(void) {
 }
 
 
+int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
+  uint64 n, va0, pa0;
+  uint64 old_sstatus = r_sstatus();
+
+  w_sstatus(old_sstatus | SSTATUS_SUM);
+  
+  while (len > 0) {
+    va0 = PGROUNDDOWN(dstva);
+  
+    pte_t *pte = walk(pagetable, va0, 0);
+    if (pte == 0 || !(*pte & PTE_V) || !(*pte & PTE_U) || !(*pte & PTE_W)) {
+      w_sstatus(old_sstatus);
+      return -1;
+    }
+  
+    pa0 = PTE2PA(*pte);
+  
+    n = PGSIZE - (dstva - va0);
+    if (n > len)
+      n = len;
+  
+    memmove((void *)(pa0 + (dstva - va0)), src, n);
+  
+    len -= n;
+    src += n;
+    dstva = va0 + PGSIZE;
+  }
+  
+  w_sstatus(old_sstatus);
+  return 0;
+}
+
 /*
  * 复制字符串从用户态页表到内核态
  * 参数：
  *   pagetable：用户态页表
- *   dst：内核态目标地址
+ *   dstva：内核态目标地址
  *   srcva：用户态源虚拟地址
  *   max：最大长度
  * 返回：
  *   0：成功
  *   -1：失败
  */
-int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
+int copyinstr(pagetable_t pagetable, char *dstva, uint64 srcva, uint64 max) {
   uint64 va0, pa0;
   int got_null = 0;
   uint64 old_sstatus = r_sstatus();
@@ -277,9 +309,9 @@ int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max) {
 
     while (n) {
       char c = *p;
-      *dst = c;
+      *dstva = c;
 
-      dst++;
+      dstva++;
       p++;
       srcva++;
       max--;

@@ -24,7 +24,29 @@ struct cpu cpus[NCPU];
 
 /* 进程 ID 计数器（每次 allocpid 返回后递增）*/
 static int nextpid = 1;
+static struct spinlock wait_lock;
+static struct proc *initproc;
 
+static void freeproc(struct proc *p) {
+  if (p->trapframe) {
+    kfree((void*)p->trapframe);
+    p->trapframe = 0;
+  }
+  if (p->kstack) {
+    kfree((void*)p->kstack);
+    p->kstack = 0;
+  }
+
+  p->pagetable = 0;
+  p->sz = 0;
+  p->pid = 0;
+  p->parent = 0;
+  p->name[0] = 0;
+  p->chan = 0;
+  p->killed = 0;
+  p->xstate = 0;
+  p->status = TASK_FREE;
+}
 /* ================================================================
  * mycpu — 获取当前 CPU 核心的 cpu 结构指针
  *
@@ -56,12 +78,14 @@ int allocpid(void) { return nextpid++; }
  * 任务：将进程表中所有条目的状态初始化为 TASK_FREE。
  * ================================================================ */
 void procinit(void) {
-  /* ================================================================
-   * TODO [Lab5-任务1-步骤1]：
-   *   遍历 proc[] 数组，将每个进程的 status 置为 TASK_FREE。
-   * ================================================================ */
+  initlock(&wait_lock, "wait_lock");
   for (int i = 0; i < NPROC; i++) {
+    initlock(&proc[i].lock, "proc");
     proc[i].status = TASK_FREE;
+    proc[i].chan = 0;
+    proc[i].killed = 0;
+    proc[i].xstate = 0;
+    proc[i].parent = 0;
   }
 }
 
@@ -79,34 +103,38 @@ void procinit(void) {
 struct proc *allocproc(void) {
   struct proc *p;
 
-  /* 在进程表中寻找一个 TASK_FREE 的槽位 */
   for (p = proc; p < &proc[NPROC]; p++) {
-    if (p->status == TASK_FREE)
-      goto found;
+    acquire(&p->lock);
+    if (p->status == TASK_FREE) {
+      p->status = TASK_ALLOCATED;
+      p->pid = allocpid();
+      p->trapframe = (struct trapframe *)kalloc();
+      if (p->trapframe == 0) {
+        p->status = TASK_FREE;
+        release(&p->lock);
+        return 0;
+      }
+      p->kstack = (uint64)kalloc();
+      if (p->kstack == 0) {
+        kfree((void*)p->trapframe);
+        p->trapframe = 0;
+        p->status = TASK_FREE;
+        release(&p->lock);
+        return 0;
+      }
+      p->context.sp = p->kstack + PGSIZE;
+      memset(p->trapframe, 0, sizeof(struct trapframe));
+      p->context.ra = (uint64)forkret;
+      p->chan = 0;
+      p->killed = 0;
+      p->xstate = 0;
+      p->parent = 0;
+      release(&p->lock);
+      return p;
+    }
+    release(&p->lock);
   }
-  return 0; /* 进程表已满 */
-
-found:
-  /* ================================================================
-   * TODO [Lab5-任务1-步骤2]：
-   *   完成进程初始化：
-   *   1. 分配 pid：调用 allocpid()
-   *   2. 分配 trapframe 页：调用 kalloc()；若失败则将状态恢复为 TASK_FREE 并返回0
-   *   3. 将进程状态设为 TASK_ALLOCATED
-   * ================================================================ */
-  p->pid = allocpid();
-
-  p->trapframe = (struct trapframe*)kalloc();
-  if (p->trapframe == 0) {
-    p->status = TASK_FREE;  // 空间不足，分配失败，将状态恢复为 TASK_FREE
-    return 0;
-  }
-  memset(p->trapframe, 0, sizeof(struct trapframe));
-  p->context.ra = (uint64)forkret;
-  p->status = TASK_ALLOCATED;   // 分配成功，将状态设置为 TASK_ALLOCATED
-  // TASK_READY的设置是在userinit函数中进行的
-
-  return p;
+  return 0;
 }
 
 /* ================================================================
@@ -144,11 +172,15 @@ void scheduler(void) {
        *   4. 调用 swtch 切换到 p 的上下文：swtch(&c->context, &p->context)
        *   5. swtch 返回后（进程放弃了CPU），清零 c->proc
        * ================================================================ */
+      acquire(&p->lock);
       if (p->status == TASK_READY) {
         p->status = TASK_RUNNING;
         c->proc = p;
+        release(&p->lock);
         swtch(&c->context, &p->context);
         c->proc = 0;
+      } else {
+        release(&p->lock);
       }
     }
   }
@@ -162,16 +194,154 @@ void scheduler(void) {
 void yield(void) {
   struct proc *p = myproc();
 
-  /* ================================================================
-   * TODO [Lab5-任务4]：
-   *   1. 将进程状态改为 TASK_READY
-   *   2. 调用 swtch 切回调度器上下文：swtch(&p->context, &mycpu()->context)
-   * 
-   *   思考：为什么是 "进程 → 调度器" 而不是 "进程A → 进程B" 直接切换？
-   *   答：如果直接切换到另一个进程，那么当前进程的上下文信息就会丢失，导致无法恢复。
-   * ================================================================ */
+  acquire(&p->lock);
   p->status = TASK_READY;
-  swtch(&p->context, &mycpu()->context);  
+  release(&p->lock);
+
+  swtch(&p->context, &mycpu()->context);
+}
+
+/* ================================================================
+ * sleep — 当前进程进入睡眠状态，等待某个事件发生
+ * 
+ * 过程：将自己的状态从 TASK_RUNNING 改回 TASK_SLEEPING，然后切回调度器。
+ * ================================================================ */
+void sleep(void *chan, struct spinlock *lk) {
+  struct proc *p = myproc();
+
+  acquire(&p->lock);
+  release(lk);
+
+  p->chan = chan;
+  p->status = TASK_SLEEPING;
+
+  release(&p->lock);
+
+  swtch(&p->context, &mycpu()->context);
+
+  acquire(&p->lock);
+  p->chan = 0;
+  release(&p->lock);
+
+  acquire(lk);
+}
+
+
+
+void wakeup(void *chan) {
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++) {
+    if (p == myproc())
+      continue;
+    acquire(&p->lock);
+    if (p->status == TASK_SLEEPING && p->chan == chan) {
+      p->status = TASK_READY; 
+    }
+    release(&p->lock);
+  }
+}
+
+void exit(int status) {
+  struct proc *p = myproc();
+  struct proc *pp;  // 遍历进程表
+
+  if (p == initproc)
+    panic("initproc exiting");
+
+  acquire(&wait_lock);
+
+  // 把孤儿进程挂到 initproc，如果有子进程的话
+  for (pp = proc; pp < &proc[NPROC]; pp++) {
+    if (pp->parent == p) {
+      pp->parent = initproc;
+      wakeup(initproc);   // 如果 init 正在 wait，唤醒它
+    }
+  }
+  // 唤醒正在 wait 自己的父进程
+  wakeup(p->parent);
+
+  acquire(&p->lock);
+  p->xstate = status;
+  p->status = TASK_ZOMBIE;
+  release(&p->lock);
+  release(&wait_lock);
+
+  // 让出 CPU，不应返回
+  swtch(&p->context, &mycpu()->context);
+  panic("zombie exit");
+}
+
+int wait(uint64 addr) {
+  struct proc *p = myproc();
+  struct proc *pp;
+  int havekids, pid;
+
+  acquire(&wait_lock);
+  for (;;) {
+    havekids = 0;
+
+    for (pp = proc; pp < &proc[NPROC]; pp++) {
+      if (pp->parent != p)
+        continue;
+
+      havekids = 1;
+      acquire(&pp->lock);
+
+      if (pp->status == TASK_ZOMBIE) {
+        pid = pp->pid;
+
+        // 可选：后面你实现 copyout 后再把 xstate 回写给用户
+        // if (addr != 0 && copyout(..., &pp->xstate, sizeof(pp->xstate)) < 0) { ... }
+        if (addr !=0) {
+          if (copyout(kernel_pagetable, addr, (char*)&pp->xstate, sizeof(pp->xstate)) < 0) {
+            release(&pp->lock);
+            release(&wait_lock);
+            return -1;
+          }
+        }
+
+        freeproc(pp);
+        release(&pp->lock);
+        release(&wait_lock);
+        return pid;
+      }
+
+      release(&pp->lock);
+    }
+
+    if (!havekids || p->killed) {
+      release(&wait_lock);
+      return -1;
+    }
+
+    sleep(p, &wait_lock);   // 会原子释放 wait_lock 并睡眠，醒来后重新持有
+  }
+}
+
+
+int fork(void) {
+  int pid;
+  struct proc *p = myproc();
+  struct proc *np = allocproc();
+  if (np == 0) {
+    return -1;
+  }
+
+  memmove(np->trapframe, p->trapframe, sizeof(*p->trapframe));
+
+  np->trapframe->a0 = 0;
+
+  np->parent = p;
+  np->sz = p->sz;
+  memmove(np->name, p->name, sizeof(np->name));
+
+  pid = np->pid;
+
+  acquire(&np->lock);
+  np->status = TASK_READY;
+  release(&np->lock);
+
+  return pid;
 }
 
 
@@ -183,10 +353,10 @@ void userinit(void) {
     panic("userinit: allocproc failed");
   
   // 分配内核栈
-  p->kstack = (uint64)kalloc();
-  if (p->kstack == 0)
-    panic("userinit: kstack alloc failed");
-  p->context.sp = p->kstack + PGSIZE;
+  // p->kstack = (uint64)kalloc();
+  // if (p->kstack == 0)
+  //   panic("userinit: kstack alloc failed");
+  // p->context.sp = p->kstack + PGSIZE;
 
   if (user_initcode_bin_len > PGSIZE) 
     panic("userinit: initcode too large for one page");
@@ -195,8 +365,6 @@ void userinit(void) {
   if (mem == 0)
     panic("userinit: mem alloc failed");
   memmove(mem, user_initcode_bin, user_initcode_bin_len);
-  
-  printf("userinit: mem=%p msg=%p\n", mem, mem + 0x1c);
 
   if (mappages(kernel_pagetable, (uint64)mem, 0, PGSIZE,
                 PTE_R | PTE_W | PTE_X | PTE_U) != 0)
@@ -212,6 +380,7 @@ void userinit(void) {
   memset(p->name, 0, 16);
   memmove(p->name, "proczero", 9);
   p->status = TASK_READY;
+  initproc = p;
 }
 
 void usertrapret(void) {

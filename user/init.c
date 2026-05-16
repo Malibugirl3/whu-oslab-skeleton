@@ -1,13 +1,25 @@
 #include "user.h"
 
 int main(void) {
-  write(1, "Hello from user!\n", 17);
+  int status = -1;
+  int cpid = fork();
 
-  if (getpid() == 1)
-    write(1, "getpid ok\n", 10);
+  if (cpid < 0) {
+    write(1, "fork failed\n", 12);
+    exit(1);
+  }
 
-  exit(0);
+  if (cpid == 0) {
+    write(1, "Child: hello\n", 13);
+    exit(1);
+  } else {
+    int pid = wait(&status);
 
-  for (;;)
-    ;
+    if (pid > 0) {
+      write(1, "Parent: child exited\n", 21);
+    }
+    
+    while(1);
+
+  }
 }

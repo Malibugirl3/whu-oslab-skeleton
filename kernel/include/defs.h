@@ -15,7 +15,8 @@ struct trapframe;
 struct buf;
 struct inode;
 struct dirent;
-
+struct sleeplock;
+struct spinlock;
 /* ======================================================
  * 通用工具函数
  * 文件：kernel/lib/string.c
@@ -96,7 +97,7 @@ struct proc *allocproc(void);
 void scheduler(void) __attribute__((noreturn));
 void yield(void);
 void sched(void);
-void sleep(void *chan);
+void sleep(void *chan, struct spinlock *lk);
 void wakeup(void *chan);
 
 /* ======================================================
@@ -111,7 +112,8 @@ void swtch(struct context *old, struct context *new);
  * ====================================================== */
 void syscall(void);
 int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
-int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
+int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len);
+int copyinstr(pagetable_t pagetable, char *dstva, uint64 srcva, uint64 max);
 
 /* ======================================================
  * Lab6 新增：系统调用具体实现
@@ -126,6 +128,29 @@ uint64 sys_write(void);
 void argint(int n, int *ip);
 void argaddr(int n, uint64 *ip);
 int argstr(int n, char *buf, int max);
+int fork(void);
+void exit(int status);
+int wait(uint64 addr);
+
+/* ======================================================
+ * Lab6 新增：自旋鎖
+ * 文件：kernel/sync/spinlock.c
+ * ====================================================== */
+ void initlock(struct spinlock *lk, char *name);
+ void acquire(struct spinlock *lk);
+ void release(struct spinlock *lk);
+ int  holding(struct spinlock *lk);
+ void push_off(void);
+ void pop_off(void);
+ 
+ /* ======================================================
+  * Lab6 新增：睡眠鎖
+  * 文件：kernel/sync/sleeplock.c
+  * ====================================================== */
+ void initsleeplock(struct sleeplock *lk, char *name);
+ void acquiresleep(struct sleeplock *lk);
+ void releasesleep(struct sleeplock *lk);
+ int  holdingsleep(struct sleeplock *lk);
 
 /* ======================================================
  * Lab7 新增：块缓冲层

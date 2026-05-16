@@ -38,9 +38,9 @@
  *   后续可按需添加更多系统调用。
  * ================================================================ */
 static uint64 (*syscalls[20])(void) = {
-    // [SYS_fork] = sys_fork,
+    [SYS_fork] = sys_fork,
     [SYS_exit] = sys_exit,
-    // [SYS_wait] = sys_wait,
+    [SYS_wait] = sys_wait,
     [SYS_getpid] = sys_getpid,
     // [SYS_sbrk] = sys_sbrk,
     [SYS_write] = sys_write,

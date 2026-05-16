@@ -33,22 +33,11 @@ uint64 sys_getpid(void) {
  * sys_exit (Lab6 扩展)
  *   实现进程退出。简化版：打印退出信息，将进程状态设为 TASK_ZOMBIE，然后切回调度器。
  * ================================================================ */
-uint64 sys_exit(void) {
-  /* ================================================================
-   * TODO [Lab6-任务4-步骤2（可选）]：
-   *   实现进程退出。简化版：打印退出信息，将进程状态设为 ZOMBIE，然后切回调度器。
-   * ================================================================ */
-   struct proc *p = myproc();
-   int code = myproc()->trapframe->a0;
-
-   printf("Process %d exited with status %d\n", p->pid, code);
-
-   p->status = TASK_ZOMBIE;
-
-   swtch(&p->context, &mycpu()->context);
-   
-   panic("sys_exit: returned");
-   return 0;
+ uint64 sys_exit(void) {
+  int n;
+  argint(0, &n);
+  exit(n);
+  return 0; // 不会执行到
 }
 
 
@@ -105,4 +94,14 @@ uint64 sys_write(void) {
     
   return written;
 
+}
+
+uint64 sys_fork(void) {
+  return fork();
+}
+
+uint64 sys_wait(void) {
+  uint64 p;
+  argaddr(0, &p);    // 用户传进来的 &status 地址
+  return wait(p);
 }

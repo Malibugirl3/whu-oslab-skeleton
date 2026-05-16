@@ -10,6 +10,7 @@
 
 #include "types.h"
 #include "param.h"
+#include "spinlock.h"
 
 /* ================================================================
  * 进程状态枚举
@@ -105,14 +106,21 @@ struct trapframe {
  * 进程的所有元信息都记录在这里。
  * ================================================================ */
 struct proc {
-  enum task_status status;     /* 进程当前状态 */
-  int pid;                     /* 进程 ID（从 1 开始递增分配）*/
+  struct spinlock lock;
+
+  enum task_status status;    /* 进程当前状态 */
+  int pid;                    /* 进程 ID（从 1 开始递增分配）*/
+  void *chan;                 /* 睡眠通道（用于 sleep/wakeup）*/
+  int killed;                 /* 是否被杀死 */
+  int xstate;                 /* 退出状态 */
+  
+  struct proc *parent;         /* 父进程 */
+  char name[16];               /* 进程名称（调试用）*/
   pagetable_t pagetable;       /* 该进程的用户页表 */
   struct trapframe *trapframe; /* 陷阱帧（保存用户寄存器）*/
   struct context context;      /* 内核上下文（swtch 使用）*/
   uint64 kstack;               /* 该进程的内核栈顶地址 */
   uint64 sz;                   /* 进程地址空间大小（字节）*/
-  char name[16];               /* 进程名称（调试用）*/
 };
 
 /* CPU 描述结构 */

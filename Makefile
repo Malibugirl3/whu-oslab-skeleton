@@ -86,7 +86,9 @@ SRCS = \
     kernel/proc/proc.c \
     kernel/proc/swtch.S \
 	kernel/syscall/syscall.c \
-	kernel/syscall/sysproc.c
+	kernel/syscall/sysproc.c \
+	kernel/sync/spinlock.c \
+	kernel/sync/sleeplock.c \
 
 KERNEL  = kernel.elf
 LDSCRIPT = kernel.ld
