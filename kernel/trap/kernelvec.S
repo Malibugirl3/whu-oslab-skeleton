@@ -210,6 +210,10 @@ user_trap_vector:
     csrr t0, sepc
     sd t0, 24(a0)
 
+    ld t1, 0(a0)        # trapframe->kernel_satp
+    csrw satp, t1
+    sfence.vma zero, zero
+
     # 4. 切换到内核栈
     ld sp, 8(a0)       # trapframe->kernel_sp
 

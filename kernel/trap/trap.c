@@ -193,7 +193,6 @@ void usertrap(void) {
     return;
   
   } else {
-    /* 用户态发生异常（如非法内存访问），直接终止该进程 */
     uint64 irq2  = scause & 0xff;
     switch (irq2) {
       case 8:
@@ -234,6 +233,11 @@ void usertrap(void) {
       // default:
       //   printf("usertrap: unknown interrupt irq=%d\n", irq2);
       //   panic("usertrap: else p unknown interrupt");
+      default:
+        printf("usertrap sync exception: scause=%p sepc=%p stval=%p pid=%d\n",
+               r_scause(), r_sepc(), r_stval(),
+               myproc() ? myproc()->pid : -1);
+        break;
     }
     panic("usertrap: unexpected exception");
   }

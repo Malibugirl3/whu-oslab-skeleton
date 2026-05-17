@@ -24,6 +24,7 @@ struct cpu cpus[NCPU];
 
 /* 进程 ID 计数器（每次 allocpid 返回后递增）*/
 static int nextpid = 1;
+static struct spinlock pid_lock;
 static struct spinlock wait_lock;
 static struct proc *initproc;
 
@@ -37,7 +38,11 @@ static void freeproc(struct proc *p) {
     p->kstack = 0;
   }
 
-  p->pagetable = 0;
+  if (p->pagetable) {
+    uvmfree(p->pagetable, p->sz);
+    p->pagetable = 0;
+  }
+
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -70,7 +75,14 @@ struct proc *myproc(void) { return mycpu()->proc; }
 /* ================================================================
  * allocpid — 分配一个唯一的进程 ID
  * ================================================================ */
-int allocpid(void) { return nextpid++; }
+int allocpid(void) {
+  int pid;
+  acquire(&pid_lock);
+  pid = nextpid;
+  nextpid++;
+  release(&pid_lock);
+  return pid;
+}
 
 /* ================================================================
  * procinit — 初始化进程表（内核启动时调用一次）
@@ -78,6 +90,7 @@ int allocpid(void) { return nextpid++; }
  * 任务：将进程表中所有条目的状态初始化为 TASK_FREE。
  * ================================================================ */
 void procinit(void) {
+  initlock(&pid_lock, "pid_lock");
   initlock(&wait_lock, "wait_lock");
   for (int i = 0; i < NPROC; i++) {
     initlock(&proc[i].lock, "proc");
@@ -125,6 +138,7 @@ struct proc *allocproc(void) {
       p->context.sp = p->kstack + PGSIZE;
       memset(p->trapframe, 0, sizeof(struct trapframe));
       p->context.ra = (uint64)forkret;
+      p->pagetable = 0;
       p->chan = 0;
       p->killed = 0;
       p->xstate = 0;
@@ -293,7 +307,7 @@ int wait(uint64 addr) {
         // 可选：后面你实现 copyout 后再把 xstate 回写给用户
         // if (addr != 0 && copyout(..., &pp->xstate, sizeof(pp->xstate)) < 0) { ... }
         if (addr !=0) {
-          if (copyout(kernel_pagetable, addr, (char*)&pp->xstate, sizeof(pp->xstate)) < 0) {
+          if (copyout(p->pagetable, addr, (char*)&pp->xstate, sizeof(pp->xstate)) < 0) {
             release(&pp->lock);
             release(&wait_lock);
             return -1;
@@ -327,12 +341,22 @@ int fork(void) {
     return -1;
   }
 
-  memmove(np->trapframe, p->trapframe, sizeof(*p->trapframe));
+  np->pagetable = uvmcreate();
+  if (np->pagetable == 0) {
+    freeproc(np);
+    return -1;
+  }
 
+  if (uvmcopy(p->pagetable, np->pagetable, p->sz) != 0) {
+    freeproc(np);
+    return -1;
+  }
+
+  np->sz = p->sz;
+  memmove(np->trapframe, p->trapframe, sizeof(*p->trapframe));
   np->trapframe->a0 = 0;
 
   np->parent = p;
-  np->sz = p->sz;
   memmove(np->name, p->name, sizeof(np->name));
 
   pid = np->pid;
@@ -351,22 +375,22 @@ void userinit(void) {
   struct proc *p = allocproc();
   if (p == 0) 
     panic("userinit: allocproc failed");
-  
-  // 分配内核栈
-  // p->kstack = (uint64)kalloc();
-  // if (p->kstack == 0)
-  //   panic("userinit: kstack alloc failed");
-  // p->context.sp = p->kstack + PGSIZE;
 
   if (user_initcode_bin_len > PGSIZE) 
     panic("userinit: initcode too large for one page");
 
+  p->pagetable = uvmcreate();
+  if (p->pagetable == 0)
+    panic("userinit: uvmcreate failed");
+
   char *mem = kalloc(); // 分配一页内存，用于存放proczero_code，返回的是虚拟地址
   if (mem == 0)
     panic("userinit: mem alloc failed");
+
+  memset(mem, 0, PGSIZE);  
   memmove(mem, user_initcode_bin, user_initcode_bin_len);
 
-  if (mappages(kernel_pagetable, (uint64)mem, 0, PGSIZE,
+  if (mappages(p->pagetable, (uint64)mem, 0, PGSIZE,
                 PTE_R | PTE_W | PTE_X | PTE_U) != 0)
     panic("userinit: map initcode failed");
   
@@ -375,10 +399,11 @@ void userinit(void) {
   // 默认从0开始执行
   p->trapframe->epc = 0;
   p->trapframe->sp = PGSIZE;
-
   p->sz = PGSIZE;
-  memset(p->name, 0, 16);
+
+  memset(p->name, 0, sizeof(p->name));
   memmove(p->name, "proczero", 9);
+
   p->status = TASK_READY;
   initproc = p;
 }
@@ -391,8 +416,10 @@ void usertrapret(void) {
   w_stvec((uint64)user_trap_vector);
   w_sscratch((uint64)p->trapframe); // 保存trapframe地址到sscratch
 
+  p->trapframe->kernel_satp = MAKE_SATP(kernel_pagetable);
   p->trapframe->kernel_sp = p->kstack + PGSIZE;
   p->trapframe->kernel_trap = (uint64)usertrap;
+  p->trapframe->kernel_hartid = r_tp();
 
   uint64 x = r_sstatus();
   x &= ~SSTATUS_SPP;  // 清除 SPP 位，表示返回用户态
@@ -403,6 +430,9 @@ void usertrapret(void) {
 
   w_sip(r_sip() & ~SIP_SSIP); // 清除 SSIP 位，防止无限重触发
 
+
+  w_satp(MAKE_SATP(p->pagetable));
+  sfence_vma();
   userret(p->trapframe);
   // // asm volatile("sret");
   // asm volatile(

@@ -64,6 +64,7 @@ uint64 sys_write(void) {
   int fd;
   uint64 buf;
   int count;
+  struct proc *p = myproc();
 
   argint(0, &fd); // 获取文件描述符
   argaddr(1, &buf); // 获取用户态地址
@@ -80,7 +81,7 @@ uint64 sys_write(void) {
     if (n > sizeof(kbuf))
       n = sizeof(kbuf);
     
-    if (copyin(kernel_pagetable, kbuf, buf + written, n) < 0) {
+    if (copyin(p->pagetable, kbuf, buf + written, n) < 0) {
       if (written == 0)
         return -1;
       break;

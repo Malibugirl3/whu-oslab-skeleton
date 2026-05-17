@@ -103,8 +103,8 @@ INITCODE_H  = kernel/proc/initcode.h
 # ============================================================
 all: $(KERNEL)
 
-$(USER_ELF): user/init.c user/usys.S user/user.h
-	$(CC) $(USER_CFLAGS) -Ttext 0 -e main user/init.c user/usys.S -o $@
+$(USER_ELF): user/init.c user/ulib.c user/usys.S user/user.h
+	$(CC) $(USER_CFLAGS) -Ttext 0 -e main user/init.c user/ulib.c user/usys.S -o $@
 	@echo "======================================"
 	@echo " 用户程序编译成功：$(USER_ELF)"
 	@echo "======================================"

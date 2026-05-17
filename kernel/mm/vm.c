@@ -195,6 +195,132 @@ void kvminithart(void) {
   sfence_vma();
 }
 
+static void freewalk(pagetable_t pagetable) {
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if ((pte & PTE_V) == 0)
+      continue;
+
+    // 不是叶子项（没有 R/W/X），说明它指向下一级页表
+    if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+      uint64 child = PTE2PA(pte);
+      freewalk((pagetable_t)child);
+      pagetable[i] = 0;
+    } else {
+      // 叶子项应该在 uvmfree 的第一阶段被清掉，这里保险清零
+      pagetable[i] = 0;
+    }
+  }
+
+  kfree((void *)pagetable);
+}
+
+uint64 walkaddr(pagetable_t pagetable, uint64 va) {
+  if (va >= MAXVA)
+    return 0;
+
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0)
+    return 0;
+  if ((*pte & PTE_V) == 0)
+    return 0;
+  if ((*pte & PTE_U) == 0)
+    return 0;
+
+  uint64 pa = PTE2PA(*pte);
+  return pa + (va & (PGSIZE - 1));
+}
+
+pagetable_t uvmcreate(void) {
+  pagetable_t pagetable = (pagetable_t)kalloc();
+  if (pagetable == 0)
+    return 0;
+  memset(pagetable, 0, PGSIZE);
+
+  // 方案B下，用户态运行时也会使用 p->pagetable。
+  // 因此该页表必须具备基础内核映射，保证陷阱切换路径可用。
+  if (mappages(pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W) != 0)  
+    goto bad;
+  if (mappages(pagetable, KERNBASE, KERNBASE, (uint64)etext - KERNBASE,
+               PTE_R | PTE_X) != 0)
+    goto bad;
+  if (mappages(pagetable, (uint64)etext, (uint64)etext,
+               PHYSTOP - (uint64)etext, PTE_R | PTE_W) != 0)
+    goto bad;
+  if (mappages(pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W) != 0)
+    goto bad;
+
+  return pagetable;
+
+bad:
+  // 这里没有用户页，sz 传 0 即可；会释放已分配的页表页。
+  uvmfree(pagetable, 0);
+  return 0;
+}
+
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
+  uint64 va = 0;
+
+  for (va = 0; va < sz; va += PGSIZE) {
+    pte_t *pte = walk(old, va, 0);
+    if (pte == 0 || (*pte & PTE_V) == 0)
+      goto err;
+
+    uint64 pa = PTE2PA(*pte);
+    uint64 flags = PTE_FLAGS(*pte) & (PTE_R | PTE_W | PTE_X | PTE_U);
+
+    char *mem = kalloc();
+    if (mem == 0)
+      goto err;
+
+    memmove(mem, (void *)pa, PGSIZE);
+
+    // 注意你项目 mappages 参数顺序是 (pagetable, pa, va, size, perm)
+    if (mappages(new, (uint64)mem, va, PGSIZE, flags) != 0) {
+      kfree(mem);
+      goto err;
+    }
+  }
+
+  return 0;
+
+err:
+  // 回滚已复制成功的用户页，避免 fork 失败时泄漏物理页。
+  for (uint64 a = 0; a < va; a += PGSIZE) {
+    pte_t *pte = walk(new, a, 0);
+    if (pte == 0 || (*pte & PTE_V) == 0)
+      continue;
+    if ((*pte & (PTE_R | PTE_W | PTE_X)) == 0)
+      continue;
+
+    uint64 pa = PTE2PA(*pte);
+    kfree((void *)pa);
+    *pte = 0;
+  }
+  return -1;
+}
+
+void uvmfree(pagetable_t pagetable, uint64 sz) {
+  // 第一阶段：释放用户叶子页（物理页）
+  for (uint64 va = 0; va < sz; va += PGSIZE) {
+    pte_t *pte = walk(pagetable, va, 0);
+    if (pte == 0)
+      continue;
+    if ((*pte & PTE_V) == 0)
+      continue;
+    if ((*pte & (PTE_R | PTE_W | PTE_X)) == 0)
+      continue; // 非叶子，交给 freewalk
+
+    uint64 pa = PTE2PA(*pte);
+    kfree((void *)pa);
+    *pte = 0;
+  }
+
+  // 第二阶段：递归释放页表页
+  freewalk(pagetable);
+}
+
+
 /*
  * copyin — 从用户态页表中复制数据到内核态
  *

@@ -67,6 +67,15 @@ uint64 walkaddr(pagetable_t pagetable, uint64 va);
 extern pagetable_t kernel_pagetable;
 
 /* ======================================================
+ * Lab6 新增：用户虚拟内存
+ * 文件：kernel/mm/vm.c
+ * ====================================================== */
+uint64 walkaddr(pagetable_t pagetable, uint64 va);
+pagetable_t uvmcreate(void);
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz);
+void uvmfree(pagetable_t pagetable, uint64 sz);
+
+/* ======================================================
  * Lab4 新增：启动初始化
  * 文件：kernel/boot/start.c
  * ====================================================== */

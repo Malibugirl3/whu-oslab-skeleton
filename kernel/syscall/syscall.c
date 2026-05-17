@@ -12,15 +12,8 @@
 #include "param.h"
 #include "proc.h"
 #include "riscv.h"
+#include "syscall_nr.h"
 #include "types.h"
-
-/* 系统调用号常量定义 */
-#define SYS_fork 1
-#define SYS_exit 2
-#define SYS_wait 3
-#define SYS_getpid 11
-#define SYS_sbrk 12
-#define SYS_write 16
 
 /* 获取定义长度的宏 */
 #define NELEM(x) (sizeof(x) / sizeof((x)[0]))
@@ -113,11 +106,12 @@ void argaddr(int n, uint64 *ip) {
  *   -1：失败
  */
 int argstr(int n, char *buf, int max) {
+  struct proc *p = myproc();
+  
   uint64 addr;
-
   argaddr(n, &addr);
 
-  if (copyinstr(kernel_pagetable, buf, addr, max) < 0)  // 先打通
+  if (copyinstr(p->pagetable, buf, addr, max) < 0)  // 先打通
     return -1;
   
   return 0;
