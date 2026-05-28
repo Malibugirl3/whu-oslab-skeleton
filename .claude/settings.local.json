@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(pdftotext \"D:\\\\Desktop\\\\Grade2_2\\\\操作系统课程设计\\\\pdf\\\\实验6：多进程机制与系统调用.pdf\" -)",
-      "Bash(pdftotext *)"
-    ]
-  }
-}

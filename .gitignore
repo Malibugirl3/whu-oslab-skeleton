@@ -4,4 +4,5 @@
 *.bin
 .DS_Store
 .vscode/
+.claude/
 kernel/proc/initcode.h
