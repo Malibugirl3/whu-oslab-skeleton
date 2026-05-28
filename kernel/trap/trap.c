@@ -196,7 +196,7 @@ void usertrap(void) {
     uint64 irq2  = scause & 0xff;
     switch (irq2) {
       case 8:
-        myproc()->trapframe->epc = r_sepc() + 4;
+        // myproc()->trapframe->epc = r_sepc() + 4;
 
         intr_on();
 

@@ -43,6 +43,7 @@ static uint64 (*syscalls[20])(void) = {
  * syscall — 系统调用分发主函数（由 usertrap 调用）
  * ================================================================ */
 void syscall(void) {
+  p->trapframe->epc += 4;
   struct proc *p = myproc();
 
   /* 从陷阱帧读取系统调用号（用户在 a7 寄存器中填入的值）*/
