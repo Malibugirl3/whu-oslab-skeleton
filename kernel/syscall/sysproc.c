@@ -41,62 +41,6 @@ uint64 sys_getpid(void) {
 }
 
 
-uint64 sys_write(void) {
-  /* ================================================================
-  * sys_write — Lab6 简化版标准输出
-  *
-  * 当前只支持 fd == 1，即标准输出/串口输出。
-  * 参数通过 argint/argaddr 从 trapframe 中提取：
-  *   arg0: fd
-  *   arg1: 用户缓冲区地址 buf
-  *   arg2: 写入长度 count
-  *
-  * 为避免用户传入超大 count 导致内核栈溢出，本实现使用小缓冲区
-  * 分块 copyin，再逐字节输出到 UART。
-  *
-  * Lab7 引入文件系统后，这里应改为：
-  *   1. 根据 fd 查找当前进程打开的 struct file；
-  *   2. 调用 filewrite(f, buf, count)；
-  *   3. 由 console/file 层分别处理终端输出和磁盘文件写入。
-  * ================================================================ */
-
-
-  int fd;
-  uint64 buf;
-  int count;
-  struct proc *p = myproc();
-
-  argint(0, &fd); // 获取文件描述符
-  argaddr(1, &buf); // 获取用户态地址
-  argint(2, &count); // 获取写入字节数
-
-  if (fd != 1 || count < 0)
-    return -1;
-  
-  char kbuf[64];
-  int written = 0;
-    
-  while (written < count) {
-    int n = count - written;
-    if (n > sizeof(kbuf))
-      n = sizeof(kbuf);
-    
-    if (copyin(p->pagetable, kbuf, buf + written, n) < 0) {
-      if (written == 0)
-        return -1;
-      break;
-    }
-    
-    for (int i = 0; i < n; i++)
-      uart_putc(kbuf[i]);
-    
-    written += n;
-  }
-    
-  return written;
-
-}
-
 uint64 sys_fork(void) {
   return fork();
 }

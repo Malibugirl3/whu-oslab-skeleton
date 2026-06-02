@@ -11,6 +11,7 @@
 #include "types.h"
 #include "param.h"
 #include "spinlock.h"
+#include "file.h"
 
 /* ================================================================
  * 进程状态枚举
@@ -116,6 +117,7 @@ struct proc {
   
   struct proc *parent;         /* 父进程 */
   char name[16];               /* 进程名称（调试用）*/
+  struct file *ofile[NOFILE];  /* 打开的文件描述符表 */
   pagetable_t pagetable;       /* 该进程的用户页表 */
   struct trapframe *trapframe; /* 陷阱帧（保存用户寄存器）*/
   struct context context;      /* 内核上下文（swtch 使用）*/

@@ -166,9 +166,11 @@ int wait(uint64 addr);
  * 文件：kernel/fs/bio.c
  * ====================================================== */
 void binit(void);
+void virtio_disk_init(void);
 struct buf *bread(uint dev, uint blockno);
 void bwrite(struct buf *b);
 void brelse(struct buf *b);
+void fsinit(int dev);
 
 /* ======================================================
  * Lab7 新增：文件系统核心
@@ -179,5 +181,32 @@ struct inode *iget(uint dev, uint inum);
 struct inode *dirlookup(struct inode *dp, char *name, uint *poff);
 int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n);
 int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n);
+void ilock(struct inode *ip);
+void iunlock(struct inode *ip);
+void iput(struct inode *ip);
+void iupdate(struct inode *ip);
+struct inode *ialloc(uint dev, short type);
+int dirlink(struct inode *dp, char *name, uint inum);
+struct inode *namei(char *path);
+struct inode *nameiparent(char *path, char *name);
+
+/* ======================================================
+ * Lab7 新增：文件描述符层
+ * 文件：kernel/fs/file.c
+ * ====================================================== */
+struct file *filealloc(void);
+struct file *filedup(struct file *f);
+void fileclose(struct file *f);
+int fileread(struct file *f, uint64 addr, int n);
+int filewrite(struct file *f, uint64 addr, int n);
+
+/* ======================================================
+ * Lab7 新增：文件系统调用
+ * 文件：kernel/syscall/sysfile.c
+ * ====================================================== */
+uint64 sys_open(void);
+uint64 sys_read(void);
+uint64 sys_write(void);
+uint64 sys_close(void);
 
 #endif /* DEFS_H */

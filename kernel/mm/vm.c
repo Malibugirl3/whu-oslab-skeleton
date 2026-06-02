@@ -152,6 +152,8 @@ void kvmininit(void) {
    * ================================================================ */
   if (mappages(kernel_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W) != 0)
     panic("kvmininit: failed to map UART0");
+  if (mappages(kernel_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W) != 0)
+    panic("kvmininit: failed to map VIRTIO0");
 
   /* ================================================================
    * TODO [Lab3-任务4-步骤2]：

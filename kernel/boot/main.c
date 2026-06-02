@@ -22,6 +22,7 @@
 /* 声明在 uart.c 中实现的函数（Lab2完成后改用 defs.h 统一管理）*/
 // extern void uart_puts(char *s);
 # include "defs.h"
+# include "param.h"
 # include "riscv.h"
 
 
@@ -34,6 +35,8 @@ void start_main() {
   plicinit();
   intr_on();
   procinit();    // 初始化进程表
+  virtio_disk_init(); // 初始化磁盘驱动
+  fsinit(ROOTDEV); // 初始化文件系统
   userinit();    // 创建第一个进程
   scheduler();   // 开始调度（永不返回）
 

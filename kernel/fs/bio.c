@@ -19,21 +19,10 @@
 #include "param.h"
 #include "riscv.h"
 #include "types.h"
+#include "buf.h"
 
-/* 磁盘块大小（字节，与文件系统层约定一致）*/
-#define BSIZE 1024
+// 移动到buf.h中
 
-/* 缓冲块结构（已提供，无需修改）*/
-struct buf {
-  int valid;         /* 当前缓存的数据是否有效（从磁盘读取过）*/
-  int disk;          /* 是否正在与磁盘驱动交互（等待读写完成）*/
-  uint dev;          /* 设备号 */
-  uint blockno;      /* 磁盘块号 */
-  uint refcnt;       /* 引用计数（有多少人在使用这块缓冲）*/
-  struct buf *prev;  /* LRU 链表前驱 */
-  struct buf *next;  /* LRU 链表后继 */
-  uchar data[BSIZE]; /* 磁盘块的实际数据（1024字节）*/
-};
 
 /* 缓冲池（全局，内核中只有一个）*/
 struct {
@@ -63,7 +52,10 @@ void binit(void) {
    * ================================================================ */
   for (b = bcache.buf; b < bcache.buf + NBUF; b++) {
     /* 在这里插入链表 */
-    (void)b;
+    b->prev = &bcache.head;
+    b->next = bcache.head.next;
+    bcache.head.next->prev = b;
+    bcache.head.next = b;
   }
 }
 
@@ -100,8 +92,11 @@ static struct buf *bget(uint dev, uint blockno) {
        *   3. 将 b->refcnt 设为 1（开始被使用）
        *   4. 返回 b
        * ================================================================ */
-      (void)dev;
-      (void)blockno;
+       b->dev = dev;
+       b->blockno = blockno;
+       b->valid = 0;
+       b->refcnt = 1;
+       return b;
     }
   }
   panic("bget: no buffers");
@@ -122,6 +117,8 @@ struct buf *bread(uint dev, uint blockno) {
      *   调用磁盘驱动读取数据，并将 b->valid 标记为 1（数据已有效）。
      *   使用 virtio_disk_rw(b, 0)：第二个参数 0 表示读操作。
      * ================================================================ */
+     virtio_disk_rw(b, 0);
+     b->valid = 1;
   }
 
   return b;
@@ -136,7 +133,7 @@ void bwrite(struct buf *b) {
    *   调用磁盘驱动将缓冲数据写回磁盘。
    *   使用 virtio_disk_rw(b, 1)：第二个参数 1 表示写操作。
    * ================================================================ */
-  (void)b;
+   virtio_disk_rw(b, 1);
 }
 
 /* ================================================================
@@ -155,5 +152,14 @@ void brelse(struct buf *b) {
    *      摘除操作需修改 4 个指针（b的前据的next、b的后继的prev）；
    *      头插到 bcache.head 后面同样需要 4 个指针修改。
    * ================================================================ */
-  (void)b;
+  b->refcnt--;
+  if (b->refcnt == 0) {
+    b->prev->next = b->next;
+    b->next->prev = b->prev;
+
+    b->prev = &bcache.head;
+    b->next = bcache.head.next;
+    bcache.head.next->prev = b;
+    bcache.head.next = b;
+  }
 }

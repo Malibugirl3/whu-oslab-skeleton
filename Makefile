@@ -87,8 +87,13 @@ SRCS = \
     kernel/proc/swtch.S \
 	kernel/syscall/syscall.c \
 	kernel/syscall/sysproc.c \
+	kernel/syscall/sysfile.c \
 	kernel/sync/spinlock.c \
 	kernel/sync/sleeplock.c \
+	kernel/fs/bio.c \
+	kernel/fs/fs.c \
+	kernel/fs/file.c \
+	kernel/driver/virtio_disk.c \
 
 KERNEL  = kernel.elf
 LDSCRIPT = kernel.ld
@@ -97,6 +102,8 @@ USER_INIT   = user/initcode
 USER_ELF    = $(USER_INIT).elf
 USER_BIN    = $(USER_INIT).bin
 INITCODE_H  = kernel/proc/initcode.h
+FSIMG       = fs.img
+MKFS        = mkfs
 
 # ============================================================
 # 构建目标
@@ -121,6 +128,16 @@ $(INITCODE_H): $(USER_BIN)
 	@echo " 初始化代码头文件生成成功：$(INITCODE_H)"
 	@echo "======================================"
 
+# 编译 mkfs 工具（主机上运行，非 RISC-V）
+$(MKFS): mkfs.c
+	gcc -o $(MKFS) mkfs.c
+	@echo "mkfs 工具编译成功"
+
+# 生成磁盘镜像
+$(FSIMG): $(MKFS)
+	./$(MKFS) $(FSIMG)
+	@echo "磁盘镜像生成成功：$(FSIMG)"
+
 $(KERNEL): $(INITCODE_H) $(SRCS) $(LDSCRIPT)
 	$(CC) $(CFLAGS) -T $(LDSCRIPT) $(SRCS) -o $@
 	@echo "======================================"
@@ -129,11 +146,14 @@ $(KERNEL): $(INITCODE_H) $(SRCS) $(LDSCRIPT)
 	@echo "======================================"
 
 # 在 QEMU 中运行内核
-run: $(KERNEL)
+run: $(KERNEL) $(FSIMG)
 	qemu-system-riscv64 \
 	    -machine virt \
 	    -bios none \
 	    -kernel $(KERNEL) \
+	    -nic none \
+	    -drive file=$(FSIMG),if=none,format=raw,id=x0 \
+	    -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
 	    -nographic
 	# 退出 QEMU：按 Ctrl+A，然后按 X
 

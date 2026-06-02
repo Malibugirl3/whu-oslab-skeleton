@@ -1,41 +1,43 @@
 #include "user.h"
 
 int main(void) {
-  int status = 0;
-  int pid_process = fork();
+  int fd, r;
+  char buf[64];
 
-  int mypid = getpid();
-  uprintf("My pid: %d\n", mypid);
+  uprintf("Lab7: File System Test\n");
 
-  if (pid_process < 0) {
-    uprintf("fork failed in init\n");
-    for (;;)
-      ;
+  /* 测试1: 创建并写入文件 */
+  fd = open("/hello.txt", O_CREAT | O_WRONLY);
+  if (fd < 0) {
+    uprintf("FAIL: open/create\n");
+    exit(1);
   }
-
-  if (pid_process == 0) {
-    int child = fork();
-    if (child < 0) {
-      uprintf("fork failed in tester\n");
-      exit(1);
-    }
-    if (child == 0) {
-      uprintf("Child: hello\n");
-      exit(1);
-    } else {
-      int dead = wait(&status);
-      if (dead > 0) {
-        uprintf("Parent: child %d exited with %d\n", dead, status);
-      }
-      exit(0);
-    }
-  } else {
-    int dead = wait(&status);
-    if (dead > 0) {
-      uprintf("Process %d exited with status %d\n", dead, status);
-    }
+  r = write(fd, "Hello, File System!\n", 20);
+  if (r != 20) {
+    uprintf("FAIL: write returned %d\n", r);
+    exit(1);
   }
+  close(fd);
+  uprintf("Test 1 passed: wrote 20 bytes\n");
 
-  for (;;)
-    ;
+  /* 测试2: 重新打开并读取 */
+  fd = open("/hello.txt", O_RDONLY);
+  if (fd < 0) {
+    uprintf("FAIL: reopen\n");
+    exit(1);
+  }
+  r = read(fd, buf, 64);
+  if (r != 20) {
+    uprintf("FAIL: read returned %d\n", r);
+    exit(1);
+  }
+  buf[r] = 0;
+  uprintf("Test 2 passed: read '%s'\n", buf);
+  close(fd);
+
+  uprintf("All tests passed!\n");
+
+  for (;;) ;  /* init 永不退出 */
+
+  return 0;
 }

@@ -30,21 +30,27 @@
  *   目前只实现 sys_getpid，其余留空（NULL）。
  *   后续可按需添加更多系统调用。
  * ================================================================ */
+extern uint64 sys_open(void);
+extern uint64 sys_read(void);
+extern uint64 sys_close(void);
+
 static uint64 (*syscalls[20])(void) = {
-    [SYS_fork] = sys_fork,
-    [SYS_exit] = sys_exit,
-    [SYS_wait] = sys_wait,
+    [SYS_fork]   = sys_fork,
+    [SYS_exit]   = sys_exit,
+    [SYS_wait]   = sys_wait,
+    [SYS_open]   = sys_open,
+    [SYS_read]   = sys_read,
+    [SYS_write]  = sys_write,
+    [SYS_close]  = sys_close,
     [SYS_getpid] = sys_getpid,
-    // [SYS_sbrk] = sys_sbrk,
-    [SYS_write] = sys_write,
 };
 
 /* ================================================================
  * syscall — 系统调用分发主函数（由 usertrap 调用）
  * ================================================================ */
 void syscall(void) {
-  p->trapframe->epc += 4;
   struct proc *p = myproc();
+  p->trapframe->epc += 4;
 
   /* 从陷阱帧读取系统调用号（用户在 a7 寄存器中填入的值）*/
   int num = p->trapframe->a7;
@@ -65,6 +71,13 @@ void syscall(void) {
    }
 }
 
+/*
+ * 获取参数
+ * 参数：
+ *   n：参数索引
+ * 返回：
+ *   参数值
+ */
 static uint64 argraw(int n) {
   struct proc *p = myproc();
 
@@ -87,11 +100,22 @@ static uint64 argraw(int n) {
   }
 }
 
-
+/*
+ * 获取整数参数
+ * 参数：
+ *   n：参数索引
+ *   ip：保存结果的整数指针
+*/
 void argint(int n, int *ip) {
   *ip = (int)argraw(n);
 }
 
+/*
+ * 获取地址参数
+ * 参数：
+ *   n：参数索引
+ *   ip：保存结果的地址指针
+ */
 void argaddr(int n, uint64 *ip) {
   *ip = argraw(n);
 }

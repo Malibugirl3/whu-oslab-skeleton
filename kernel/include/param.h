@@ -15,5 +15,10 @@
 #define NBUF (MAXOPBLOCKS * 3)    /* Buffer Cache 槽位数 */
 #define FSSIZE 1000               /* 文件系统大小（块数） */
 #define MAXPATH 128               /* 文件路径字符串最大长度 */
+#define BSIZE 1024                /* 磁盘块大小（字节）*/
+#define DIRSIZ 14                 /* 目录项文件名最大长度 */
+#define NDIRECT 12                /* 直接块指针数量 */
+#define FSMAGIC 0x10203040        /* 文件系统魔法数 */
+#define ROOTINO 1                 /* 根目录 inode 编号 */
 
 #endif /* PARAM_H */
