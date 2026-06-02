@@ -208,5 +208,6 @@ uint64 sys_open(void);
 uint64 sys_read(void);
 uint64 sys_write(void);
 uint64 sys_close(void);
+uint64 sys_unlink(void);
 
 #endif /* DEFS_H */

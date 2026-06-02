@@ -7,6 +7,7 @@ int open(const char *path, int flags);
 int read(int fd, char *buf, int n);
 int write(int fd, char *buf, int n);
 int close(int fd);
+int unlink(const char *path);
 int getpid(void);
 int write(int fd, char *buf, int n);
 int fork(void);

@@ -32,6 +32,7 @@
  * ================================================================ */
 extern uint64 sys_open(void);
 extern uint64 sys_read(void);
+extern uint64 sys_unlink(void);
 extern uint64 sys_close(void);
 
 static uint64 (*syscalls[20])(void) = {
@@ -42,6 +43,7 @@ static uint64 (*syscalls[20])(void) = {
     [SYS_read]   = sys_read,
     [SYS_write]  = sys_write,
     [SYS_close]  = sys_close,
+    [SYS_unlink] = sys_unlink,
     [SYS_getpid] = sys_getpid,
 };
 

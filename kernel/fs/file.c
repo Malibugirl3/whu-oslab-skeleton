@@ -105,6 +105,8 @@ filewrite(struct file *f, uint64 addr, int n)
 {
     int r = 0;
 
+    printf("[filewrite] off=%d n=%d\n", f->off, n);
+
     if (!f->writable)
         return -1;
 

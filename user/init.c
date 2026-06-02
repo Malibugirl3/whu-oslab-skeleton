@@ -35,6 +35,18 @@ int main(void) {
   uprintf("Test 2 passed: read '%s'\n", buf);
   close(fd);
 
+  /* 测试3: 删除文件 */
+  if (unlink("/hello.txt") < 0) {
+    uprintf("FAIL: unlink\n");
+    exit(1);
+  }
+  fd = open("/hello.txt", O_RDONLY);
+  if (fd >= 0) {
+    uprintf("FAIL: file should be deleted\n");
+    exit(1);
+  }
+  uprintf("Test 3 passed: file deleted\n");
+
   uprintf("All tests passed!\n");
 
   for (;;) ;  /* init 永不退出 */

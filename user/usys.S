@@ -84,3 +84,9 @@ close:
     li a7, SYS_close
     ecall
     ret
+
+    .global unlink
+unlink:
+    li a7, SYS_unlink
+    ecall
+    ret

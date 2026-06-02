@@ -10,6 +10,7 @@
 #define SYS_write 16
 #define SYS_read  17
 #define SYS_close 18
+#define SYS_unlink 19
 
 /* open 系统调用的 flags */
 #define O_RDONLY 0x000

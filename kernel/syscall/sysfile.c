@@ -57,6 +57,7 @@ sys_open(void)
             return -1;
         }
         ilock(ip);
+        ip->nlink = 1;   // 新文件至少有一个目录项指向它
         if (dirlink(dp, name, ip->inum) < 0) {
             iunlock(ip);
             iput(ip);
@@ -174,5 +175,77 @@ sys_close(void)
 
     myproc()->ofile[fd] = 0;
     fileclose(f);
+    return 0;
+}
+
+/* ================================================================
+ * sys_unlink — 删除文件
+ *
+ * 连接关系：
+ *   用户态 unlink(path) → syscall 分发 → sys_unlink()
+ *   → 调用 Layer 3 的 nameiparent / dirlookup / writei / iput
+ *
+ * 流程：
+ *   1. argstr → 拿到路径字符串
+ *   2. nameiparent → 解析出父目录 dp + 文件名 name
+ *   3. ilock(dp) + dirlookup(dp, name, &off) → 找到文件 + 偏移
+ *   4. 校验：文件必须存在且不是目录
+ *   5. writei(dp, 0, &de, off, ...) → 把 dirent 的 inum 清零
+ *   6. iput(dp) → 释放父目录
+ *   7. ip->nlink-- → 减少链接计数
+ *   8. iput(ip) → ref==0 且 nlink==0 时触发 itrunc 回收资源
+ * ================================================================ */
+uint64
+sys_unlink(void)
+{
+    char path[128], name[DIRSIZ];
+    struct inode *ip, *dp;
+    struct dirent de;
+    uint off;
+
+    /* 步骤1: 从用户空间拿路径 */
+    if (argstr(0, path, sizeof(path)) < 0)
+        return -1;
+
+    /* 步骤2: 解析出父目录 + 文件名 */
+    dp = nameiparent(path, name);
+    if (dp == 0)
+        return -1;
+
+    /* 步骤3: 锁父目录，查找目标文件（同时拿到 dirent 偏移）*/
+    ilock(dp);
+    ip = dirlookup(dp, name, &off);
+    if (ip == 0) {
+        iunlock(dp);
+        iput(dp);
+        return -1;   // 文件不存在
+    }
+
+    /* 步骤4: 不允许删除目录（简化处理）*/
+    if (ip->type == T_DIR) {
+        iunlock(ip);
+        iput(ip);
+        iunlock(dp);
+        iput(dp);
+        return -1;
+    }
+
+    /* 步骤5: 清除目录项 — 把 dirent 的 inum 设为 0 然后写回 */
+    memset(&de, 0, sizeof(de));
+    de.inum = 0;
+    writei(dp, 0, (uint64)&de, off, sizeof(de));
+
+    /* 步骤6: 释放父目录 */
+    iunlock(dp);
+    iput(dp);
+
+    /* 步骤7: 减少链接计数 */
+    ip->nlink--;
+
+    /* 步骤8: 释放文件 inode
+     *       此时如果没人打开了 → ref==0, nlink==0 → iput 内部触发 itrunc */
+    iunlock(ip);
+    iput(ip);
+
     return 0;
 }

@@ -201,12 +201,69 @@ iupdate(struct inode *ip)
 
 }
 
-void 
+/* 前向声明：itrunc 需要调用 bfree（bfree 定义在后面）*/
+static void bfree(uint dev, uint b);
+
+/* ================================================================
+ * itrunc — 释放 inode 的所有数据块（直接块 + 一级间接块）
+ *
+ * 这是"真正删除数据"的函数，被 iput 在 nlink==0 且 ref==0 时调用。
+ *
+ * 连接关系：
+ *   inode.addrs[] (内存中的块地址)  →  bfree (Layer 2, 磁盘 bitmap)
+ *
+ * 参数：
+ *   ip — 要清空的 inode 指针
+ * ================================================================ */
+static void
+itrunc(struct inode *ip)
+{
+    int i;
+    struct buf *bp;
+    uint *a;
+
+    /* 1. 释放 12 个直接块 */
+    for (i = 0; i < NDIRECT; i++) {
+        if (ip->addrs[i]) {
+            bfree(ip->dev, ip->addrs[i]);
+            ip->addrs[i] = 0;
+        }
+    }
+
+    /* 2. 释放一级间接块（以及它指向的所有数据块）*/
+    if (ip->addrs[NDIRECT]) {
+        // 读出间接块（里面存着 NINDIRECT 个物理块号）
+        bp = bread(ip->dev, ip->addrs[NDIRECT]);
+        a = (uint *)bp->data;
+
+        // 释放间接块指向的每一个数据块
+        for (i = 0; i < NINDIRECT; i++) {
+            if (a[i])
+                bfree(ip->dev, a[i]);
+        }
+        brelse(bp);
+
+        // 最后释放间接块本身
+        bfree(ip->dev, ip->addrs[NDIRECT]);
+        ip->addrs[NDIRECT] = 0;
+    }
+
+    ip->size = 0;
+    iupdate(ip);   // 把 size=0 和 addrs[] 全零写回磁盘 dinode
+}
+
+void
 iput(struct inode *ip)
 {
   ip->ref--;
   if (ip->ref == 0) {
-    ip->valid = 0;
+    /* 文件已被删除（nlink==0）且无人使用 → 真正回收资源 */
+    if (ip->nlink == 0) {
+      itrunc(ip);       // 释放所有数据块
+      ip->type = 0;     // 标记 dinode 为空闲
+      iupdate(ip);      // 写回磁盘
+    }
+    ip->valid = 0;      // 缓存失效
   }
 }
 
