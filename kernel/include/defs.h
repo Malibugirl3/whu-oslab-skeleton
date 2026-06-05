@@ -133,7 +133,7 @@ uint64 sys_exit(void);
 uint64 sys_fork(void);
 uint64 sys_wait(void);
 uint64 sys_sbrk(void);
-uint64 sys_write(void);
+// uint64 sys_write(void);
 void argint(int n, int *ip);
 void argaddr(int n, uint64 *ip);
 int argstr(int n, char *buf, int max);
