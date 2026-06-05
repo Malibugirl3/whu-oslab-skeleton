@@ -24,9 +24,9 @@ struct cpu cpus[NCPU];
 
 /* 进程 ID 计数器（每次 allocpid 返回后递增）*/
 static int nextpid = 1;
-static struct spinlock pid_lock;
-static struct spinlock wait_lock;
-static struct proc *initproc;
+static struct spinlock pid_lock;  // 进程ID锁
+static struct spinlock wait_lock;  // 等待锁
+static struct proc *initproc;  // 初始进程
 
 static void freeproc(struct proc *p) {
   if (p->trapframe) {
@@ -47,9 +47,9 @@ static void freeproc(struct proc *p) {
   p->pid = 0;
   p->parent = 0;
   p->name[0] = 0;
-  p->chan = 0;
+  p->chan = 0;  // 睡眠通道
   p->killed = 0;
-  p->xstate = 0;
+  p->xstate = 0;  // 正常退出
   p->status = TASK_FREE;
 }
 /* ================================================================
