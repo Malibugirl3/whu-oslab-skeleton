@@ -155,6 +155,8 @@ static int alloc3_desc(int *idx) {
 void virtio_disk_init(void) {
     uint32 status = 0;
 
+    initlock(&disk.vdisk_lock, "virtio_disk");
+    
     /* 验证设备 */
     if (*R(VIRTIO_MMIO_MAGIC_VALUE) != 0x74726976 ||
         *R(VIRTIO_MMIO_VERSION) != 1 ||

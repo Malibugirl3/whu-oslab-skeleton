@@ -25,7 +25,7 @@
 #define NINDIRECT (BSIZE / sizeof(uint)) /* 一级间接块中的指针数量 */
 #define IPB       (BSIZE / sizeof(struct dinode))
 #define BPB       (BSIZE * 8)
-
+#define MAXFILE   (NDIRECT + NINDIRECT)
 
 /* 声明外部函数（由其他模块提供）*/
 extern struct buf *bread(uint dev, uint blockno);
@@ -57,6 +57,7 @@ struct superblock sb;
 
 /* inode 缓存 — 内存中的 inode 缓存 */
 struct {
+  struct spinlock lock;
   struct inode inode[NINODE];
 } icache;
 
@@ -85,9 +86,11 @@ fsinit(int dev)
   if (sb.magic != FSMAGIC)
     panic("fsinit: invalid file system!");
 
+  initlock(&icache.lock, "icache");
   for (int i = 0;  i < NINODE; i++) {
     icache.inode[i].ref = 0;
     icache.inode[i].valid = 0;
+    initsleeplock(&icache.inode[i].lock, "inode");
   }
 }
 
@@ -106,22 +109,27 @@ iget(uint dev, uint inum)
   struct inode *ip, *empty;
 
   empty = 0;
+  acquire(&icache.lock);
   for (ip = icache.inode; ip < icache.inode + NINODE; ip++) {
     if (ip->ref > 0 && ip->dev == dev && ip->inum == inum) {
       ip->ref++;
+      release(&icache.lock);
       return ip;
     }
     if (empty == 0 && ip->ref == 0)
       empty = ip; // 找到一个空闲的inode
   }
 
-  if (empty == 0)
+  if (empty == 0) {
+    release(&icache.lock);
     panic("iget: no inodes");
+  }
 
   empty->dev = dev;
   empty->inum = inum;
   empty->ref = 1;
   empty->valid = 0;
+  release(&icache.lock);
   return empty;
 }
 
@@ -140,6 +148,11 @@ ilock — 锁定 inode
 void
 ilock(struct inode *ip) 
 {
+  if (ip == 0 || ip->ref < 1)
+    panic("ilock");
+
+  acquiresleep(&ip->lock);
+
   if (ip->valid == 0) {
     struct buf *bp;
     struct dinode *dip;
@@ -157,15 +170,19 @@ ilock(struct inode *ip)
 
     brelse(bp);
     ip->valid = 1;
-    
-    if (ip->type == 0)
-      panic("ilock: no type");
   }
+
+  if (ip->type == 0)
+    panic("ilock: no type");
 }
 
 void
 iunlock(struct inode *ip)
 {
+  if (ip == 0 || !holdingsleep(&ip->lock) || ip->ref < 1)
+    panic("iunlock");
+
+  releasesleep(&ip->lock);
 }
 
 /*
@@ -255,16 +272,22 @@ itrunc(struct inode *ip)
 void
 iput(struct inode *ip)
 {
-  ip->ref--;
-  if (ip->ref == 0) {
+  acquire(&icache.lock);
+  if (ip->ref == 1 && ip->valid && ip->nlink == 0) {
+    acquiresleep(&ip->lock);
+    release(&icache.lock);
+
     /* 文件已被删除（nlink==0）且无人使用 → 真正回收资源 */
-    if (ip->nlink == 0) {
-      itrunc(ip);       // 释放所有数据块
-      ip->type = 0;     // 标记 dinode 为空闲
-      iupdate(ip);      // 写回磁盘
-    }
-    ip->valid = 0;      // 缓存失效
+    itrunc(ip);       // 释放所有数据块
+    ip->type = 0;     // 标记 dinode 为空闲
+    iupdate(ip);      // 写回磁盘
+    ip->valid = 0;    // 缓存失效
+
+    releasesleep(&ip->lock);
+    acquire(&icache.lock);
   }
+  ip->ref--;
+  release(&icache.lock);
 }
 
 struct inode*
@@ -394,7 +417,7 @@ bfree(uint dev, uint b)
  *
  * 若目标块尚未分配（地址为0），自动调用 balloc() 分配新块。
  * ================================================================ */
-static uint bmap(struct inode *ip, uint bn) {
+static uint bmap(struct inode *ip, uint bn, int alloc) {
   uint addr;
   struct buf *bp;
   uint *a;
@@ -402,6 +425,8 @@ static uint bmap(struct inode *ip, uint bn) {
   /* 直接映射（前 NDIRECT 个逻辑块）*/
   if (bn < NDIRECT) {
     if ((addr = ip->addrs[bn]) == 0) {
+      if (!alloc)
+        return 0;
       /* ================================================================
        * TODO [Lab7-任务2-步骤1]：
        *   这个块尚未分配，调用 balloc 分配一个新磁盘块并将其块号写入 ip->addrs[bn]。
@@ -418,6 +443,8 @@ static uint bmap(struct inode *ip, uint bn) {
   if (bn < NINDIRECT) {
     /* 先确保间接指针块本身已分配 */
     if ((addr = ip->addrs[NDIRECT]) == 0) {
+      if (!alloc)
+        return 0;
       /* ================================================================
        * TODO [Lab7-任务2-步骤2]：
        *   分配间接指针块本身：同样调用 balloc，将块号写入 ip->addrs[NDIRECT]。
@@ -432,6 +459,10 @@ static uint bmap(struct inode *ip, uint bn) {
 
     /* 在间接块中查找第 bn 个物理块地址 */
     if ((addr = a[bn]) == 0) {
+      if (!alloc) {
+        brelse(bp);
+        return 0;
+      }
       /* ================================================================
        * TODO [Lab7-任务2-步骤3]：
        *   分配实际数据块，将其块号写入间接块并将间接块写回磁盘。
@@ -471,7 +502,9 @@ int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n) {
 
   for (tot = 0; tot < n; tot += m, off += m, dst += m) {
     /* 找到当前偏移所在的物理磁盘块 */
-    uint blockno = bmap(ip, off / BSIZE);
+    uint blockno = bmap(ip, off / BSIZE, 0);
+    if (blockno == 0)
+      return (int)tot;
     bp = bread(ip->dev, blockno);
 
     /* 计算本次从这一块可以读多少字节 */
@@ -514,13 +547,14 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n) {
   uint tot, m, blockno;
   struct buf *bp;
 
-  if (off + n < off) 
+  if (off > MAXFILE * BSIZE || off + n < off) 
     return -1;
-  if (off + n > ip->size) 
-    ip->size = off + n;
+
+  if (off + n > MAXFILE * BSIZE)
+    n = MAXFILE * BSIZE - off;
 
   for (tot = 0; tot < n; tot += m, off += m, src += m) {
-    blockno = bmap(ip, off / BSIZE);
+    blockno = bmap(ip, off / BSIZE, 1);
     bp = bread(ip->dev, blockno);
     m = BSIZE - off % BSIZE;
     if (m > n - tot)
@@ -539,6 +573,9 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n) {
     brelse(bp);
   }
 
+  if (off > ip->size)
+    ip->size = off;
+
   iupdate(ip);
   return n;
 
@@ -551,6 +588,12 @@ dirlink(struct inode *dp, char *name, uint inum)
 {
     struct dirent de;
     uint off;
+    struct inode *ip;
+
+    if ((ip = dirlookup(dp, name, 0)) != 0) {
+        iput(ip);
+        return -1;
+    }
 
     // 先找空洞
     for (off = 0; off < dp->size; off += sizeof(de)) {
@@ -574,15 +617,27 @@ dirlink(struct inode *dp, char *name, uint inum)
 static char*
 skipelem(char *path, char *name)
 {
-    while (*path == '/') path++;
-    if (*path == 0) return 0;
+    while (*path == '/')
+        path++;
+
+    if (*path == 0)
+        return 0;
+
     char *s = path;
-    while (*path != '/' && *path != 0) path++;
+
+    while (*path != '/' && *path != 0)
+        path++;
+
     int len = path - s;
-    if (len > DIRSIZ) len = DIRSIZ;
+    if (len > DIRSIZ)
+        len = DIRSIZ;
+
+    memset(name, 0, DIRSIZ);
     memmove(name, s, len);
-    name[len] = 0;
-    while (*path == '/') path++;
+
+    while (*path == '/')
+        path++;
+
     return path;
 }
 
@@ -630,8 +685,7 @@ nameiparent(char *path, char *name)
         if (ip->type != T_DIR) {
             iunlock(ip); iput(ip); return 0;
         }
-        char peek_name[DIRSIZ];
-        if (skipelem(path, peek_name) == 0) {
+        if (*path == 0) {
             iunlock(ip);
             return ip;          // ip 是父目录，name 已是最后一段
         }
@@ -642,7 +696,8 @@ nameiparent(char *path, char *name)
             return 0;
         ip = next;
     }
-    return ip;                  // ip=父目录，name=文件名
+    iput(ip);
+    return 0;
 }
 
 /* ================================================================
@@ -677,7 +732,7 @@ struct inode *dirlookup(struct inode *dp, char *name, uint *poff) {
      *   若匹配：记录偏移到 *poff，调用 iget 获取并返回 inode。
      *   注意：需要自己实现 strncmp（裸机无标准库）。
      * ================================================================ */
-    if (strncmp(de.name, name, DIRSIZ) == 0) {
+    if (memcmp(de.name, name, DIRSIZ) == 0) {
       if (poff) *poff = off;
       return iget(dp->dev, de.inum);
     }

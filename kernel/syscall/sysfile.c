@@ -24,49 +24,61 @@ sys_open(void)
     char name[DIRSIZ];
 
     argint(1, &flags);                    // 拿 flag
-    argstr(0, path, sizeof(path));        // 拿路径
-
-    // 1. 获取父目录 + 文件名
-    if ((dp = nameiparent(path, name)) == 0)
+    // argstr(0, path, sizeof(path));        // 拿路径
+    if (argstr(0, path, sizeof(path)) < 0) {
         return -1;
+    } 
 
-    ilock(dp);
+    if (flags & O_CREAT) {
+        // 创建路径需要先找到父目录，再处理最后一级文件名。
+        if ((dp = nameiparent(path, name)) == 0)
+            return -1;
 
-    // 2. 查找文件是否已存在
-    if ((ip = dirlookup(dp, name, 0)) != 0) {
-        // 已存在 → 直接打开
-        iunlock(dp);
-        iput(dp);
-        ilock(ip);
-        if (ip->type == T_DIR && (flags & O_WRONLY)) {
-            iunlock(ip);
-            iput(ip);
-            return -1;   // 不能只写一个目录
+        ilock(dp);
+
+        if ((ip = dirlookup(dp, name, 0)) != 0) {
+            // 文件已存在：直接打开已有 inode。
+            iunlock(dp);
+            iput(dp);
+            ilock(ip);
+            if (ip->type == T_DIR && (flags & (O_WRONLY | O_RDWR))) {
+                iunlock(ip);
+                iput(ip);
+                return -1;
+            }
+        } else {
+            // 文件不存在且 O_CREAT：分配 inode 并把名字链接进父目录。
+            if ((ip = ialloc(dp->dev, T_FILE)) == 0) {
+                iunlock(dp);
+                iput(dp);
+                return -1;
+            }
+            ilock(ip);
+            ip->nlink = 1;
+            iupdate(ip);
+
+            if (dirlink(dp, name, ip->inum) < 0) {
+                ip->nlink = 0;
+                iupdate(ip);
+                iunlock(ip);
+                iput(ip);
+                iunlock(dp);
+                iput(dp);
+                return -1;
+            }
+            iunlock(dp);
+            iput(dp);
         }
     } else {
-        // 不存在 → 需要创建？
-        if (!(flags & O_CREAT)) {
-            iunlock(dp);
-            iput(dp);
+        // 普通打开应该直接解析目标路径本身，例如 open("/", O_RDONLY)。
+        if ((ip = namei(path)) == 0)
             return -1;
-        }
-        // 创建新文件
-        if ((ip = ialloc(dp->dev, T_FILE)) == 0) {
-            iunlock(dp);
-            iput(dp);
-            return -1;
-        }
         ilock(ip);
-        ip->nlink = 1;   // 新文件至少有一个目录项指向它
-        if (dirlink(dp, name, ip->inum) < 0) {
+        if (ip->type == T_DIR && (flags & (O_WRONLY | O_RDWR))) {
             iunlock(ip);
             iput(ip);
-            iunlock(dp);
-            iput(dp);
             return -1;
         }
-        iunlock(dp);
-        iput(dp);
     }
 
     // 3. 分配 file 结构
@@ -89,6 +101,7 @@ sys_open(void)
         }
     }
     if (fd == NOFILE) {
+        iunlock(ip);
         fileclose(f);
         return -1;
     }
@@ -212,6 +225,12 @@ sys_unlink(void)
     if (dp == 0)
         return -1;
 
+    if ((name[0] == '.' && name[1] == 0) ||
+        (name[0] == '.' && name[1] == '.' && name[2] == 0)) {
+        iput(dp);
+        return -1;
+    }
+
     /* 步骤3: 锁父目录，查找目标文件（同时拿到 dirent 偏移）*/
     ilock(dp);
     ip = dirlookup(dp, name, &off);
@@ -220,6 +239,8 @@ sys_unlink(void)
         iput(dp);
         return -1;   // 文件不存在
     }
+
+    ilock(ip);
 
     /* 步骤4: 不允许删除目录（简化处理）*/
     if (ip->type == T_DIR) {
@@ -232,8 +253,13 @@ sys_unlink(void)
 
     /* 步骤5: 清除目录项 — 把 dirent 的 inum 设为 0 然后写回 */
     memset(&de, 0, sizeof(de));
-    de.inum = 0;
-    writei(dp, 0, (uint64)&de, off, sizeof(de));
+    if (writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) {
+        iunlock(ip);
+        iput(ip);
+        iunlock(dp);
+        iput(dp);
+        return -1;
+    }
 
     /* 步骤6: 释放父目录 */
     iunlock(dp);
@@ -241,6 +267,7 @@ sys_unlink(void)
 
     /* 步骤7: 减少链接计数 */
     ip->nlink--;
+    iupdate(ip);
 
     /* 步骤8: 释放文件 inode
      *       此时如果没人打开了 → ref==0, nlink==0 → iput 内部触发 itrunc */

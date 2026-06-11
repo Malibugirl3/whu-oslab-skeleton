@@ -20,12 +20,14 @@
 #include "riscv.h"
 #include "types.h"
 #include "buf.h"
+#include "spinlock.h"
 
 // 移动到buf.h中
 
 
 /* 缓冲池（全局，内核中只有一个）*/
 struct {
+  struct spinlock lock;
   struct buf buf[NBUF]; /* 固定大小的缓冲区数组（NBUF 在 param.h 定义）*/
   struct buf head;      /* LRU 链表的哨兵头节点 */
 } bcache;
@@ -40,6 +42,8 @@ extern void virtio_disk_rw(struct buf *b, int write);
  * ================================================================ */
 void binit(void) {
   struct buf *b;
+
+  initlock(&bcache.lock, "bcache");
 
   /* 初始化链表头（哨兵节点自指）*/
   bcache.head.prev = &bcache.head;
@@ -73,10 +77,13 @@ void binit(void) {
 static struct buf *bget(uint dev, uint blockno) {
   struct buf *b;
 
+  acquire(&bcache.lock);
+
   /* 步骤1：查找是否已缓存 */
   for (b = bcache.head.next; b != &bcache.head; b = b->next) {
     if (b->dev == dev && b->blockno == blockno) {
       b->refcnt++;
+      release(&bcache.lock);
       return b;
     }
   }
@@ -96,9 +103,11 @@ static struct buf *bget(uint dev, uint blockno) {
        b->blockno = blockno;
        b->valid = 0;
        b->refcnt = 1;
+       release(&bcache.lock);
        return b;
     }
   }
+  release(&bcache.lock);
   panic("bget: no buffers");
 }
 
@@ -152,6 +161,8 @@ void brelse(struct buf *b) {
    *      摘除操作需修改 4 个指针（b的前据的next、b的后继的prev）；
    *      头插到 bcache.head 后面同样需要 4 个指针修改。
    * ================================================================ */
+  acquire(&bcache.lock);
+
   b->refcnt--;
   if (b->refcnt == 0) {
     b->prev->next = b->next;
@@ -162,4 +173,6 @@ void brelse(struct buf *b) {
     bcache.head.next->prev = b;
     bcache.head.next = b;
   }
+
+  release(&bcache.lock);
 }

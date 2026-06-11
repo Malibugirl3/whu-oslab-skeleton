@@ -37,7 +37,6 @@ filealloc(void)
             return &ftable.file[i];
         }
     }
-    panic("filealloc: no free file");
     return 0;
 }
 
@@ -105,17 +104,13 @@ filewrite(struct file *f, uint64 addr, int n)
 {
     int r = 0;
 
-    printf("[filewrite] off=%d n=%d\n", f->off, n);
-
     if (!f->writable)
         return -1;
 
     ilock(f->ip);
     r = writei(f->ip, 1, addr, f->off, n);
-    if (r > 0) {
+    if (r > 0)
         f->off += r;
-        iupdate(f->ip);
-    }
     iunlock(f->ip);
 
     return r;

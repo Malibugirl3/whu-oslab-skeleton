@@ -143,6 +143,8 @@ struct proc *allocproc(void) {
       p->killed = 0;
       p->xstate = 0;
       p->parent = 0;
+      for (int i = 0; i < NOFILE; i++)
+        p->ofile[i] = 0;
       release(&p->lock);
       return p;
     }
@@ -262,6 +264,13 @@ void exit(int status) {
   if (p == initproc)
     panic("initproc exiting");
 
+  for (int fd = 0; fd < NOFILE; fd++) {
+    if (p->ofile[fd]) {
+      fileclose(p->ofile[fd]);
+      p->ofile[fd] = 0;
+    }
+  }
+
   acquire(&wait_lock);
 
   // 把孤儿进程挂到 initproc，如果有子进程的话
@@ -358,6 +367,10 @@ int fork(void) {
 
   np->parent = p;
   memmove(np->name, p->name, sizeof(np->name));
+  for (int i = 0; i < NOFILE; i++) {
+    if (p->ofile[i])
+      np->ofile[i] = filedup(p->ofile[i]);
+  }
 
   pid = np->pid;
 

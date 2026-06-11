@@ -4,6 +4,7 @@
 
 #include "types.h"
 #include "param.h"
+#include "sleeplock.h"
 
 /* inode 类型 */
 #define T_FILE   1
@@ -31,6 +32,7 @@ struct inode {
     uint inum;
     int ref;
     int valid;
+    struct sleeplock lock;
     short type;
     short major;
     short minor;
