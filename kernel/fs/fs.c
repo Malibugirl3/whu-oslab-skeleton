@@ -213,7 +213,7 @@ iupdate(struct inode *ip)
   dip->size = ip->size;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
 
-  bwrite(bp);
+  log_write(bp);
   brelse(bp);
 
 }
@@ -304,7 +304,7 @@ ialloc(uint dev, short type)
     if (dip->type == 0) {
       memset(dip, 0, sizeof(*dip));
       dip->type = type;
-      bwrite(bp);
+      log_write(bp);
       brelse(bp);
       return iget(dev, inum);
     }
@@ -329,7 +329,7 @@ bzero(uint dev, uint bno)
 
     bp = bread(dev, bno);
     memset(bp->data, 0, BSIZE);
-    bwrite(bp);
+    log_write(bp);
     brelse(bp);
 }
 
@@ -360,7 +360,7 @@ balloc(uint dev)
             m = 1 << (bi % 8);              // 构造掩码：第几位是 1 
             if ((bp->data[bi / 8] & m) == 0) {  // 这个 bit 是      0（空闲）吗？
                 bp->data[bi / 8] |= m;      // 改成 1（标记占用）   
-                bwrite(bp);                 // 写回磁盘
+                log_write(bp);              // 记录 bitmap 修改
                 brelse(bp);                 // 释放 bitmap 块       
                 bzero(dev, b + bi);         // 把分配的数据块清零   
                 return b + bi;              // 返回物理数据块号
@@ -397,7 +397,7 @@ bfree(uint dev, uint b)
         panic("bfree: freeing free block");  // 重复释放？bug！
 
     bp->data[bi / 8] &= ~m;      // 把对应 bit 清零
-    bwrite(bp);                  // 写回磁盘
+    log_write(bp);               // 记录 bitmap 修改
     brelse(bp);                  // 释放
 }
 
@@ -470,7 +470,7 @@ static uint bmap(struct inode *ip, uint bn, int alloc) {
        * ================================================================ */
        addr = balloc(ip->dev);
        a[bn] = addr;
-       bwrite(bp);
+       log_write(bp);
     }
     brelse(bp);
     return addr;
@@ -569,7 +569,7 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n) {
     } else {
       memmove((void*)(bp->data + off % BSIZE), (void*)src, m);
     }
-    bwrite(bp);
+    log_write(bp);
     brelse(bp);
   }
 

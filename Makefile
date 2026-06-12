@@ -92,6 +92,7 @@ SRCS = \
 	kernel/sync/sleeplock.c \
 	kernel/fs/bio.c \
 	kernel/fs/fs.c \
+	kernel/fs/log.c \
 	kernel/fs/file.c \
 	kernel/driver/virtio_disk.c \
 

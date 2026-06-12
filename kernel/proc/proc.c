@@ -266,7 +266,9 @@ void exit(int status) {
 
   for (int fd = 0; fd < NOFILE; fd++) {
     if (p->ofile[fd]) {
+      begin_op();
       fileclose(p->ofile[fd]);
+      end_op();
       p->ofile[fd] = 0;
     }
   }

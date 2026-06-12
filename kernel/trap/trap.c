@@ -97,9 +97,6 @@ void sys_trap_handler(void) {
       w_sip(r_sip() & ~SIP_SSIP); // 清除软件中断待处理标志
       static int ticks = 0; // 时钟中断次数
       ticks++; // 时钟中断次数加1
-      if (ticks % 10 == 0) { // 每10次时钟中断打印一次
-          printf("Tick! (%d)\n", ticks);
-      }
       if (myproc() && myproc()->status == TASK_RUNNING) { // 如果当前有正在运行的进程，则调用yield
         yield();
       }
@@ -168,8 +165,6 @@ void usertrap(void) {
           myproc()->trapframe->epc = r_sepc();
         static int ticks = 0;
         ticks++;
-        if (ticks % 10 == 0) 
-          printf("U-Mode Tick! (%d)\n", ticks);
         if (myproc() && myproc()->status == TASK_RUNNING)
           yield();
         break;

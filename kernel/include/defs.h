@@ -171,6 +171,11 @@ struct buf *bread(uint dev, uint blockno);
 void bwrite(struct buf *b);
 void brelse(struct buf *b);
 void fsinit(int dev);
+void loginit(int dev);
+void begin_op(void);
+void end_op(void);
+void log_write(struct buf *b);
+void recover_from_log(void);
 
 /* ======================================================
  * Lab7 新增：文件系统核心

@@ -37,6 +37,7 @@ void start_main() {
   procinit();    // 初始化进程表
   virtio_disk_init(); // 初始化磁盘驱动
   fsinit(ROOTDEV); // 初始化文件系统
+  loginit(ROOTDEV); // 初始化文件系统日志
   userinit();    // 创建第一个进程
   scheduler();   // 开始调度（永不返回）
 

@@ -30,9 +30,13 @@ sys_open(void)
     } 
 
     if (flags & O_CREAT) {
+        begin_op();
+
         // 创建路径需要先找到父目录，再处理最后一级文件名。
-        if ((dp = nameiparent(path, name)) == 0)
+        if ((dp = nameiparent(path, name)) == 0) {
+            end_op();
             return -1;
+        }
 
         ilock(dp);
 
@@ -44,6 +48,7 @@ sys_open(void)
             if (ip->type == T_DIR && (flags & (O_WRONLY | O_RDWR))) {
                 iunlock(ip);
                 iput(ip);
+                end_op();
                 return -1;
             }
         } else {
@@ -51,6 +56,7 @@ sys_open(void)
             if ((ip = ialloc(dp->dev, T_FILE)) == 0) {
                 iunlock(dp);
                 iput(dp);
+                end_op();
                 return -1;
             }
             ilock(ip);
@@ -64,6 +70,7 @@ sys_open(void)
                 iput(ip);
                 iunlock(dp);
                 iput(dp);
+                end_op();
                 return -1;
             }
             iunlock(dp);
@@ -85,6 +92,8 @@ sys_open(void)
     if ((f = filealloc()) == 0) {
         iunlock(ip);
         iput(ip);
+        if (flags & O_CREAT)
+            end_op();
         return -1;
     }
     f->type = FD_INODE;
@@ -103,10 +112,14 @@ sys_open(void)
     if (fd == NOFILE) {
         iunlock(ip);
         fileclose(f);
+        if (flags & O_CREAT)
+            end_op();
         return -1;
     }
 
     iunlock(ip);
+    if (flags & O_CREAT)
+        end_op();
     return fd;
 }
 
@@ -166,7 +179,10 @@ sys_write(void)
     if (f == 0)
         return -1;
 
-    return filewrite(f, addr, n);
+    begin_op();
+    int r = filewrite(f, addr, n);
+    end_op();
+    return r;
 }
 
 /* ================================================================
@@ -187,7 +203,9 @@ sys_close(void)
         return -1;
 
     myproc()->ofile[fd] = 0;
+    begin_op();
     fileclose(f);
+    end_op();
     return 0;
 }
 
@@ -220,14 +238,19 @@ sys_unlink(void)
     if (argstr(0, path, sizeof(path)) < 0)
         return -1;
 
+    begin_op();
+
     /* 步骤2: 解析出父目录 + 文件名 */
     dp = nameiparent(path, name);
-    if (dp == 0)
+    if (dp == 0) {
+        end_op();
         return -1;
+    }
 
     if ((name[0] == '.' && name[1] == 0) ||
         (name[0] == '.' && name[1] == '.' && name[2] == 0)) {
         iput(dp);
+        end_op();
         return -1;
     }
 
@@ -237,6 +260,7 @@ sys_unlink(void)
     if (ip == 0) {
         iunlock(dp);
         iput(dp);
+        end_op();
         return -1;   // 文件不存在
     }
 
@@ -248,6 +272,7 @@ sys_unlink(void)
         iput(ip);
         iunlock(dp);
         iput(dp);
+        end_op();
         return -1;
     }
 
@@ -258,6 +283,7 @@ sys_unlink(void)
         iput(ip);
         iunlock(dp);
         iput(dp);
+        end_op();
         return -1;
     }
 
@@ -274,5 +300,6 @@ sys_unlink(void)
     iunlock(ip);
     iput(ip);
 
+    end_op();
     return 0;
 }
