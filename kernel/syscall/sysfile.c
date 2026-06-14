@@ -8,7 +8,7 @@
 #include "proc.h"
 #include "types.h"
 #include "file.h"
-#include "syscall_nr.h"
+#include "userabi.h"
 
 
 /* ================================================================
@@ -139,6 +139,60 @@ sys_read(void)
 
     if (fd < 0 || fd >= NOFILE)
         return -1;
+
+    // fd=0 (stdin) 从 UART 读取输入。
+    if (fd == 0) {
+        int i = 0;
+        char c;
+        char kbuf[128];
+        int max = n;
+
+        if (max > (int)sizeof(kbuf))
+            max = sizeof(kbuf);
+
+        while (i < max) {
+            c = (char)uart_getc();
+
+            // Delete/方向键等通常会发送 ESC 开头的控制序列。
+            // 它们不应该进入命令缓冲区，否则屏幕显示和实际解析会不一致。
+            if (c == 0x1b) {
+                do {
+                    c = (char)uart_getc();
+                } while (!((c >= '@' && c <= '~') || c == '\n' || c == '\r'));
+                continue;
+            }
+
+            if (c == '\b' || c == 0x7f) {
+                if (i > 0) {
+                    i--;
+                    uart_putc('\b');
+                    uart_putc(' ');
+                    uart_putc('\b');
+                }
+                continue;
+            }
+
+            if (c == '\r')
+                c = '\n';
+
+            if (c != '\n' && (c < ' ' || c == 0x7f))
+                continue;
+
+            // 简单回显，让终端看起来像真正命令行。
+            uart_putc(c);
+
+            kbuf[i] = c;
+            i++;
+
+            if (c == '\n')
+                break;
+        }
+
+        if (copyout(myproc()->pagetable, addr, kbuf, i) < 0)
+            return -1;
+        return i;
+    }
+
     f = myproc()->ofile[fd];
     if (f == 0)
         return -1;

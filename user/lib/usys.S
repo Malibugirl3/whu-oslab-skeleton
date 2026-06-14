@@ -11,7 +11,7 @@
  * syscalls[] 数组的下标保持一致！
  */
 
-#include "syscall_nr.h"
+#include "userabi.h"
 
 /* ================================================================
  * TODO [Lab6-任务1]：
@@ -88,5 +88,11 @@ close:
     .global unlink
 unlink:
     li a7, SYS_unlink
+    ecall
+    ret
+
+    .global exec
+exec:
+    li a7, SYS_exec
     ecall
     ret

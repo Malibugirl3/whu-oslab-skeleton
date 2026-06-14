@@ -31,12 +31,12 @@ XXD     = xxd
 CFLAGS = -nostdlib -fno-builtin -mcmodel=medany \
          -march=rv64gc -mabi=lp64d \
          -g -Wall -ffreestanding \
-         -I kernel/include
+         -I kernel/include -I include
 
 USER_CFLAGS = -nostdlib -fno-builtin -ffreestanding \
               -fno-asynchronous-unwind-tables \
               -mcmodel=medany -march=rv64gc -mabi=lp64d \
-              -I user -I kernel/include
+              -I user/include -I include
 			
 
 # ============================================================
@@ -84,6 +84,7 @@ SRCS = \
     kernel/trap/trap.c \
     kernel/lib/string.c \
     kernel/proc/proc.c \
+    kernel/proc/exec.c \
     kernel/proc/swtch.S \
 	kernel/syscall/syscall.c \
 	kernel/syscall/sysproc.c \
@@ -105,17 +106,26 @@ USER_BIN    = $(USER_INIT).bin
 INITCODE_H  = kernel/proc/initcode.h
 FSIMG       = fs.img
 MKFS        = mkfs
+USER_PROGS  = user/_sh user/_hello
 
 # ============================================================
 # 构建目标
 # ============================================================
 all: $(KERNEL)
 
-$(USER_ELF): user/init.c user/ulib.c user/usys.S user/user.h
-	$(CC) $(USER_CFLAGS) -Ttext 0 -e main user/init.c user/ulib.c user/usys.S -o $@
+$(USER_ELF): user/init/init.c user/lib/usys.S user/include/user.h
+	$(CC) $(USER_CFLAGS) -Wl,-N -Ttext 0 -e main user/init/init.c user/lib/usys.S -o $@
 	@echo "======================================"
 	@echo " 用户程序编译成功：$(USER_ELF)"
 	@echo "======================================"
+
+user/_sh: user/shell/sh.c user/shell/cmd.c user/shell/cmd_builtin.c user/shell/cmd_exec.c user/shell/cmd.h user/lib/ulib.c user/lib/usys.S user/include/user.h
+	$(CC) $(USER_CFLAGS) -Wl,-N -Ttext 0 -e main user/shell/sh.c user/shell/cmd.c user/shell/cmd_builtin.c user/shell/cmd_exec.c user/lib/ulib.c user/lib/usys.S -o $@
+	@echo "用户程序生成成功：$@"
+
+user/_%: user/programs/%.c user/lib/ulib.c user/lib/usys.S user/include/user.h
+	$(CC) $(USER_CFLAGS) -Wl,-N -Ttext 0 -e main $< user/lib/ulib.c user/lib/usys.S -o $@
+	@echo "用户程序生成成功：$@"
 
 $(USER_BIN): $(USER_ELF)
 	$(OBJCOPY) -S -O binary $(USER_ELF) $(USER_BIN)
@@ -135,8 +145,8 @@ $(MKFS): mkfs.c
 	@echo "mkfs 工具编译成功"
 
 # 生成磁盘镜像
-$(FSIMG): $(MKFS)
-	./$(MKFS) $(FSIMG)
+$(FSIMG): $(MKFS) $(USER_PROGS)
+	./$(MKFS) $(FSIMG) $(USER_PROGS)
 	@echo "磁盘镜像生成成功：$(FSIMG)"
 
 $(KERNEL): $(INITCODE_H) $(SRCS) $(LDSCRIPT)
@@ -178,6 +188,6 @@ debug: $(KERNEL)
 
 # 清除编译产物
 clean:
-	rm -f $(KERNEL) *.o *.d $(USER_ELF) $(USER_BIN) $(INITCODE_H)
+	rm -f $(KERNEL) *.o *.d $(USER_ELF) $(USER_BIN) $(INITCODE_H) $(USER_PROGS) $(FSIMG) $(MKFS)
 
 .PHONY: all run debug clean

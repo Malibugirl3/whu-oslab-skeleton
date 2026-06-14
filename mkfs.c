@@ -1,22 +1,26 @@
-/* mkfs.c — 最小化文件系统镜像创建工具
+/* mkfs.c - build the root file system image.
  *
- * 使用方式：编译后运行 ./mkfs fs.img
- * 生成一个包含合法 superblock + 根目录 inode 的磁盘镜像。
+ * Usage:
+ *   ./mkfs fs.img user/_sh user/_fstest
+ *
+ * Files whose basename starts with '_' are installed without that prefix.
+ * For example, user/_sh becomes /sh inside the file system.
  */
-
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #define BSIZE       1024
 #define FSMAGIC     0x10203040
 #define ROOTINO     1
 #define NDIRECT     12
+#define NINDIRECT   (BSIZE / sizeof(unsigned int))
+#define MAXFILE     (NDIRECT + NINDIRECT)
 #define DIRSIZ      14
-#define T_DIR       2
 #define T_FILE      1
+#define T_DIR       2
 #define FSSIZE      1000
 #define NINODES     200
 #define NINODEBLOCKS 13
@@ -49,25 +53,181 @@ struct dirent {
     char name[DIRSIZ];
 };
 
-unsigned char buf[BSIZE];
+static int fsfd;
+static unsigned int freeinode = ROOTINO;
+static unsigned int freeblock;
+static struct superblock sb;
+static unsigned char zeroes[BSIZE];
 
-int main(int argc, char *argv[]) {
+static void
+die(const char *msg)
+{
+    perror(msg);
+    exit(1);
+}
+
+static void
+wsect(unsigned int sec, void *buf)
+{
+    if (lseek(fsfd, sec * BSIZE, SEEK_SET) != sec * BSIZE)
+        die("lseek");
+    if (write(fsfd, buf, BSIZE) != BSIZE)
+        die("write sector");
+}
+
+static void
+rsect(unsigned int sec, void *buf)
+{
+    if (lseek(fsfd, sec * BSIZE, SEEK_SET) != sec * BSIZE)
+        die("lseek");
+    if (read(fsfd, buf, BSIZE) != BSIZE)
+        die("read sector");
+}
+
+static void
+winode(unsigned int inum, struct dinode *ip)
+{
+    unsigned char buf[BSIZE];
+    unsigned int bn = sb.inodestart + inum / IPB;
+    struct dinode *dip;
+
+    rsect(bn, buf);
+    dip = ((struct dinode *)buf) + (inum % IPB);
+    *dip = *ip;
+    wsect(bn, buf);
+}
+
+static void
+rinode(unsigned int inum, struct dinode *ip)
+{
+    unsigned char buf[BSIZE];
+    unsigned int bn = sb.inodestart + inum / IPB;
+    struct dinode *dip;
+
+    rsect(bn, buf);
+    dip = ((struct dinode *)buf) + (inum % IPB);
+    *ip = *dip;
+}
+
+static unsigned int
+ialloc(short type)
+{
+    unsigned int inum = freeinode++;
+    struct dinode din;
+
+    if (inum >= NINODES) {
+        fprintf(stderr, "mkfs: out of inodes\n");
+        exit(1);
+    }
+
+    memset(&din, 0, sizeof(din));
+    din.type = type;
+    din.nlink = 1;
+    winode(inum, &din);
+    return inum;
+}
+
+static unsigned int
+balloc(void)
+{
+    if (freeblock >= FSSIZE) {
+        fprintf(stderr, "mkfs: out of blocks\n");
+        exit(1);
+    }
+    return freeblock++;
+}
+
+static void
+iappend(unsigned int inum, void *xp, int n)
+{
+    char *p = xp;
+    unsigned int fbn, off, n1;
+    struct dinode din;
+    unsigned char buf[BSIZE];
+    unsigned int indirect[NINDIRECT];
+
+    rinode(inum, &din);
+    off = din.size;
+
+    while (n > 0) {
+        fbn = off / BSIZE;
+        if (fbn >= MAXFILE) {
+            fprintf(stderr, "mkfs: file too large\n");
+            exit(1);
+        }
+
+        unsigned int x;
+        if (fbn < NDIRECT) {
+            if (din.addrs[fbn] == 0)
+                din.addrs[fbn] = balloc();
+            x = din.addrs[fbn];
+        } else {
+            if (din.addrs[NDIRECT] == 0)
+                din.addrs[NDIRECT] = balloc();
+
+            rsect(din.addrs[NDIRECT], (char *)indirect);
+            if (indirect[fbn - NDIRECT] == 0) {
+                indirect[fbn - NDIRECT] = balloc();
+                wsect(din.addrs[NDIRECT], (char *)indirect);
+            }
+            x = indirect[fbn - NDIRECT];
+        }
+
+        n1 = BSIZE - (off % BSIZE);
+        if (n1 > (unsigned int)n)
+            n1 = n;
+
+        rsect(x, buf);
+        memcpy(buf + (off % BSIZE), p, n1);
+        wsect(x, buf);
+
+        n -= n1;
+        off += n1;
+        p += n1;
+    }
+
+    din.size = off;
+    winode(inum, &din);
+}
+
+static void
+write_bitmap(void)
+{
+    unsigned char buf[BSIZE];
+
+    memset(buf, 0, sizeof(buf));
+    for (unsigned int i = 0; i < freeblock; i++)
+        buf[i / 8] |= 1 << (i % 8);
+
+    wsect(sb.bmapstart, buf);
+}
+
+static char *
+fsname(char *path)
+{
+    char *name = strrchr(path, '/');
+    name = name ? name + 1 : path;
+    if (name[0] == '_')
+        name++;
+    return name;
+}
+
+int
+main(int argc, char *argv[])
+{
     if (argc < 2) {
-        fprintf(stderr, "Usage: mkfs <output>\n");
+        fprintf(stderr, "Usage: mkfs <output> [files...]\n");
         return 1;
     }
 
-    int fd = open(argv[1], O_CREAT | O_WRONLY | O_TRUNC, 0644);
-    if (fd < 0) { perror("open"); return 1; }
+    fsfd = open(argv[1], O_CREAT | O_RDWR | O_TRUNC, 0644);
+    if (fsfd < 0)
+        die("open fs.img");
 
-    /* 写入 FSSIZE 个零块 */
-    memset(buf, 0, BSIZE);
+    memset(zeroes, 0, sizeof(zeroes));
     for (int i = 0; i < FSSIZE; i++)
-        write(fd, buf, BSIZE);
+        wsect(i, zeroes);
 
-    /* ---- Block 1: superblock ---- */
-    lseek(fd, BSIZE, SEEK_SET);
-    struct superblock sb;
     memset(&sb, 0, sizeof(sb));
     sb.magic      = FSMAGIC;
     sb.size       = FSSIZE;
@@ -75,57 +235,64 @@ int main(int argc, char *argv[]) {
     sb.ninodes    = NINODES;
     sb.nlog       = NLOGBLOCKS;
     sb.logstart   = 2;
-    sb.inodestart = 2 + NLOGBLOCKS + NBITMAP;  /* 2 + 30 + 1 = 33 */
-    sb.bmapstart  = 2 + NLOGBLOCKS;            /* 2 + 30 = 32 */
-    memcpy(buf, &sb, sizeof(sb));
-    lseek(fd, BSIZE, SEEK_SET);
-    write(fd, buf, BSIZE);
+    sb.bmapstart  = 2 + NLOGBLOCKS;
+    sb.inodestart = sb.bmapstart + NBITMAP;
 
-    /* ---- root inode (inum=1, Block sb.inodestart) ---- */
-    struct dinode root;
-    memset(&root, 0, sizeof(root));
-    root.type  = T_DIR;
-    root.nlink = 1;
-    root.size  = 2 * sizeof(struct dirent);   /* "." and ".." */
+    unsigned char sbuf[BSIZE];
+    memset(sbuf, 0, sizeof(sbuf));
+    memcpy(sbuf, &sb, sizeof(sb));
+    wsect(1, sbuf);
 
-    memset(buf, 0, BSIZE);
-    /* ROOTINO=1, 放在第 1 个 dinode 槽位（偏移 sizeof(dinode)）*/
-    memcpy(buf + sizeof(struct dinode), &root, sizeof(root));
-    lseek(fd, sb.inodestart * BSIZE, SEEK_SET);
-    write(fd, buf, BSIZE);
+    freeblock = sb.inodestart + NINODEBLOCKS;
 
-    /* ---- root directory data (Block 46) ---- */
-    /* mark all metadata blocks (0..inode_end) as busy in bitmap */
-    int meta_end = sb.inodestart + (sb.ninodes + IPB - 1) / IPB;
-    for (int blk = 0; blk <= meta_end; blk++) {
-        lseek(fd, sb.bmapstart * BSIZE + blk / 8, SEEK_SET);
-        read(fd, buf, 1);
-        buf[0] |= (1 << (blk % 8));
-        lseek(fd, sb.bmapstart * BSIZE + blk / 8, SEEK_SET);
-        write(fd, buf, 1);
+    unsigned int rootino = ialloc(T_DIR);
+    if (rootino != ROOTINO) {
+        fprintf(stderr, "mkfs: root inode must be %d\n", ROOTINO);
+        exit(1);
     }
 
-    /* assign first data block at meta_end + 1 for root directory */
-    int root_block = meta_end + 1;
-
-    /* update root inode's addrs[0] (inum=1, 偏移 sizeof(dinode)) */
-    root.addrs[0] = root_block;
-    lseek(fd, sb.inodestart * BSIZE + sizeof(struct dinode), SEEK_SET);
-    write(fd, &root, sizeof(root));
-
-    /* write "." and ".." entries */
     struct dirent de;
     memset(&de, 0, sizeof(de));
-    de.inum = 1;
+    de.inum = ROOTINO;
     strncpy(de.name, ".", DIRSIZ);
-    memset(buf, 0, BSIZE);
-    memcpy(buf, &de, sizeof(de));
-    memcpy(buf + sizeof(de), &de, sizeof(de));  /* ".." also points to root */
-    strncpy(((struct dirent*)(buf + sizeof(de)))->name, "..", DIRSIZ);
-    lseek(fd, root_block * BSIZE, SEEK_SET);
-    write(fd, buf, BSIZE);
+    iappend(ROOTINO, &de, sizeof(de));
 
-    close(fd);
-    printf("mkfs: created %s (%d blocks)\n", argv[1], FSSIZE);
+    memset(&de, 0, sizeof(de));
+    de.inum = ROOTINO;
+    strncpy(de.name, "..", DIRSIZ);
+    iappend(ROOTINO, &de, sizeof(de));
+
+    for (int i = 2; i < argc; i++) {
+        char *name = fsname(argv[i]);
+        if (strlen(name) >= DIRSIZ) {
+            fprintf(stderr, "mkfs: file name too long: %s\n", name);
+            exit(1);
+        }
+
+        int fd = open(argv[i], O_RDONLY);
+        if (fd < 0)
+            die(argv[i]);
+
+        unsigned int inum = ialloc(T_FILE);
+        memset(&de, 0, sizeof(de));
+        de.inum = inum;
+        strncpy(de.name, name, DIRSIZ);
+        iappend(ROOTINO, &de, sizeof(de));
+
+        unsigned char buf[BSIZE];
+        int n;
+        while ((n = read(fd, buf, sizeof(buf))) > 0)
+            iappend(inum, buf, n);
+        if (n < 0)
+            die("read input file");
+
+        close(fd);
+        printf("mkfs: added /%s\n", name);
+    }
+
+    write_bitmap();
+    close(fsfd);
+    printf("mkfs: created %s (%d blocks, used %u blocks)\n",
+           argv[1], FSSIZE, freeblock);
     return 0;
 }

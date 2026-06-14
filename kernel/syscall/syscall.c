@@ -12,7 +12,7 @@
 #include "param.h"
 #include "proc.h"
 #include "riscv.h"
-#include "syscall_nr.h"
+#include "userabi.h"
 #include "types.h"
 
 /* 获取定义长度的宏 */
@@ -35,7 +35,7 @@ extern uint64 sys_read(void);
 extern uint64 sys_unlink(void);
 extern uint64 sys_close(void);
 
-static uint64 (*syscalls[20])(void) = {
+static uint64 (*syscalls[21])(void) = {
     [SYS_fork]   = sys_fork,
     [SYS_exit]   = sys_exit,
     [SYS_wait]   = sys_wait,
@@ -44,6 +44,7 @@ static uint64 (*syscalls[20])(void) = {
     [SYS_write]  = sys_write,
     [SYS_close]  = sys_close,
     [SYS_unlink] = sys_unlink,
+    [SYS_exec]   = sys_exec,
     [SYS_getpid] = sys_getpid,
 };
 

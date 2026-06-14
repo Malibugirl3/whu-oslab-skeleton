@@ -128,12 +128,12 @@ int mappages(pagetable_t pagetable, uint64 pa, uint64 va, uint64 size,
  * kvmininit — 建立内核页表
  *
  * 建立的映射关系（"恒等映射"：虚拟地址 = 物理地址，方便内核访问）：
- *   UART0   设备 → 可读写
- *   内核代码段   → 可读+可执行
- *   内核数据段   → 可读+可写
- *   可用物理内存 → 可读+可写
+ *   UART0      串口设备       → 可读+可写
+ *   VIRTIO0    virtio 磁盘    → 可读+可写
+ *   内核代码段                 → 可读+可执行
+ *   内核数据段和物理内存       → 可读+可写
+ *   PLIC       中断控制器     → 可读+可写
  *
- * 注：更完整的版本还需映射 PLIC、virtio 等设备（Lab7使用）。
  * ================================================================ */
 void kvmininit(void) {
   /* 分配根页表 */
@@ -170,9 +170,9 @@ void kvmininit(void) {
   if (mappages(kernel_pagetable, (uint64)etext, (uint64)etext, PHYSTOP - (uint64)etext, PTE_R | PTE_W) != 0)
     panic("kvmininit: failed to map kernel data");
 
-// 映射 PLIC 中断控制器（4MB，覆盖 PLIC_PRIORITY 到 PLIC_SCLAIM 全部寄存器）
-if (mappages(kernel_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W) != 0)
-    panic("kvmininit: failed to map PLIC");
+  // 映射 PLIC 中断控制器（4MB，覆盖 PLIC_PRIORITY 到 PLIC_SCLAIM 全部寄存器）
+  if (mappages(kernel_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W) != 0)
+      panic("kvmininit: failed to map PLIC");
 }
 
 /* ================================================================
@@ -240,7 +240,7 @@ pagetable_t uvmcreate(void) {
   memset(pagetable, 0, PGSIZE);
 
   // 方案B下，用户态运行时也会使用 p->pagetable。
-  // 因此该页表必须具备基础内核映射，保证陷阱切换路径可用。
+  // 因此该页表必须具备基础内核和设备映射，保证陷阱、磁盘和中断路径可用。
   if (mappages(pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W) != 0)  
     goto bad;
   if (mappages(pagetable, KERNBASE, KERNBASE, (uint64)etext - KERNBASE,
@@ -250,6 +250,8 @@ pagetable_t uvmcreate(void) {
                PHYSTOP - (uint64)etext, PTE_R | PTE_W) != 0)
     goto bad;
   if (mappages(pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W) != 0)
+    goto bad;
+  if (mappages(pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W) != 0)
     goto bad;
 
   return pagetable;

@@ -36,6 +36,7 @@ char*  safestrcpy(char *s, const char *t, int n);
  * ====================================================== */
 void uartinit(void);
 void uart_putc(char c);
+int uart_getc(void);
 void uart_puts(char *s);
 
 /* ======================================================
@@ -132,6 +133,7 @@ uint64 sys_getpid(void);
 uint64 sys_exit(void);
 uint64 sys_fork(void);
 uint64 sys_wait(void);
+uint64 sys_exec(void);
 uint64 sys_sbrk(void);
 // uint64 sys_write(void);
 void argint(int n, int *ip);
@@ -140,6 +142,7 @@ int argstr(int n, char *buf, int max);
 int fork(void);
 void exit(int status);
 int wait(uint64 addr);
+int exec(char *path, uint64 argv);
 
 /* ======================================================
  * Lab6 新增：自旋鎖

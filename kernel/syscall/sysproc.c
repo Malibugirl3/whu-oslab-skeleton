@@ -50,3 +50,14 @@ uint64 sys_wait(void) {
   argaddr(0, &p);    // 用户传进来的 &status 地址
   return wait(p);
 }
+
+uint64 sys_exec(void) {
+  char path[MAXPATH];
+  uint64 argv;
+
+  if (argstr(0, path, sizeof(path)) < 0)
+    return -1;
+  argaddr(1, &argv);
+
+  return exec(path, argv);
+}

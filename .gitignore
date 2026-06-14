@@ -1,8 +1,21 @@
+# Common build byproducts
 *.elf
 *.o
 *.d
 *.bin
+
+# OS image and generated boot code
+/fs.img
+/kernel.elf
+/kernel/proc/initcode.h
+
+# User program build outputs, such as user/_sh and user/_hello
+_*
+
+# Host-side build tools
+/mkfs
+
+# Local editor/system files
 .DS_Store
 .vscode/
 .claude/
-kernel/proc/initcode.h

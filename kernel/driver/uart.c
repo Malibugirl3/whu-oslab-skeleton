@@ -23,6 +23,7 @@
  */
 #define UART0_BASE 0x10000000L
 #define Reg(offset) ((volatile unsigned char *)(UART0_BASE + (offset)))
+#define LSR_RX_READY (1 << 0)
 #define LSR_TX_IDLE (1 << 5)
 
 /* 发送一个字符到 UART（即：在终端打印一个字符）*/
@@ -39,6 +40,17 @@ void uart_putc(char c) {
   // (void)c; /* 暂时忽略参数，防止编译器"未使用参数"警告 */
   while(((*Reg(5)) & LSR_TX_IDLE) == 0);
   *Reg(0) = c;
+}
+
+/* 阻塞读取一个字符。
+ *
+ * 教学版 shell 先用轮询：没有输入时就在这里等待。
+ * 后续可以升级成 UART 中断 + 输入缓冲区 + sleep/wakeup。
+ */
+int uart_getc(void) {
+  while (((*Reg(5)) & LSR_RX_READY) == 0)
+    ;
+  return *Reg(0);
 }
 
 /* 发送一个字符串到 UART（逐字符调用 uart_putc）*/

@@ -9,7 +9,6 @@
 #define NINODE 50                 /* 内存中最多缓存的 inode 数 */
 #define NDEV 10                   /* 设备号上限 */
 #define ROOTDEV 1                 /* 根文件系统所在设备号 */
-#define MAXARG 32                 /* 传给 exec 的参数个数上限 */
 #define MAXOPBLOCKS 10            /* 一次文件系统事务最多写入的块数 */
 #define LOGSIZE (MAXOPBLOCKS * 3) /* 日志区块数 */
 #define NBUF (MAXOPBLOCKS * 3)    /* Buffer Cache 槽位数 */

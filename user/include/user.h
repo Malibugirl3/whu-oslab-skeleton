@@ -1,15 +1,15 @@
 #ifndef USER_H
 #define USER_H
 
-#include "syscall_nr.h"   /* O_CREAT, O_WRONLY, ... */
+#include "userabi.h"      /* syscall numbers, open flags, exec argv limits */
 
 int open(const char *path, int flags);
 int read(int fd, char *buf, int n);
 int write(int fd, char *buf, int n);
 int close(int fd);
 int unlink(const char *path);
+int exec(const char *path, char **argv);
 int getpid(void);
-int write(int fd, char *buf, int n);
 int fork(void);
 int wait(int *status);
 void exit(int status);
