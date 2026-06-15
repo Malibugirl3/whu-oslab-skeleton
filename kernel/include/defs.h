@@ -194,9 +194,11 @@ void iunlock(struct inode *ip);
 void iput(struct inode *ip);
 void iupdate(struct inode *ip);
 struct inode *ialloc(uint dev, short type);
+struct inode *idup(struct inode *ip);
 int dirlink(struct inode *dp, char *name, uint inum);
 struct inode *namei(char *path);
 struct inode *nameiparent(char *path, char *name);
+struct inode *namex(char *path, int nameiparent, char *name);
 
 /* ======================================================
  * Lab7 新增：文件描述符层

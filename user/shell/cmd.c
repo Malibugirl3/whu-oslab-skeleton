@@ -21,7 +21,7 @@ static int parse_line(char *line, char **argv) {
   int argc = 0;
   char *p = line;
 
-  trim_line(line);
+  trim_line(line); // 去除行末的换行符、空格和制表符
 
   while (*p && argc < MAXARG - 1) {
     while (*p == ' ' || *p == '\t')

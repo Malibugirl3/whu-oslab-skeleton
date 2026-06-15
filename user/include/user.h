@@ -13,6 +13,7 @@ int getpid(void);
 int fork(void);
 int wait(int *status);
 void exit(int status);
+int mkdir(const char *path);
 
 int strlen(const char *s);
 int strcmp(const char *a, const char *b);

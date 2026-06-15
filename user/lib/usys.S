@@ -96,3 +96,9 @@ exec:
     li a7, SYS_exec
     ecall
     ret
+
+    .global mkdir
+mkdir:
+    li a7, SYS_mkdir
+    ecall
+    ret

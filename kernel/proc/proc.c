@@ -51,6 +51,13 @@ static void freeproc(struct proc *p) {
   p->killed = 0;
   p->xstate = 0;
   p->status = TASK_FREE;
+  
+  if (p->cwd) {
+    iput(p->cwd);
+    p->cwd = 0;
+  }
+  for (int i = 0; i < NOFILE; i++)
+    p->ofile[i] = 0;
 }
 /* ================================================================
  * mycpu — 获取当前 CPU 核心的 cpu 结构指针
@@ -143,6 +150,7 @@ struct proc *allocproc(void) {
       p->killed = 0;
       p->xstate = 0;
       p->parent = 0;
+      p->cwd = 0;
       for (int i = 0; i < NOFILE; i++)
         p->ofile[i] = 0;
       release(&p->lock);
@@ -374,6 +382,9 @@ int fork(void) {
       np->ofile[i] = filedup(p->ofile[i]);
   }
 
+  if (p->cwd) 
+    np->cwd = idup(p->cwd);
+
   pid = np->pid;
 
   acquire(&np->lock);
@@ -415,6 +426,7 @@ void userinit(void) {
   p->trapframe->epc = 0;
   p->trapframe->sp = PGSIZE;
   p->sz = PGSIZE;
+  p->cwd = iget(ROOTDEV, ROOTINO);
 
   memset(p->name, 0, sizeof(p->name));
   memmove(p->name, "proczero", 9);

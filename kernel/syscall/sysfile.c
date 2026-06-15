@@ -11,17 +11,80 @@
 #include "userabi.h"
 
 
+static struct inode*
+create(char *path, short type)
+{
+    struct inode *ip, *dp;
+    char name[DIRSIZ];
+
+    if ((dp = nameiparent(path, name)) == 0) 
+        return 0;
+
+    ilock(dp);
+
+    if ((ip = dirlookup(dp, name, 0)) != 0) {
+        // 文件已存在, 返回
+        iunlock(dp);
+        iput(dp);
+        ilock(ip);
+
+        if (type == T_FILE && ip->type == T_FILE)
+            return ip;
+
+        // TODO : 这里直接返回了要么在上层处理返回 0 的情况，要么在这里判断是否是文件夹
+        iunlock(ip);
+        iput(ip);
+        return 0;
+    } 
+
+    if ((ip = ialloc(dp->dev, type)) == 0) {
+        iunlock(dp);
+        iput(dp);
+        return 0;
+    }
+
+    ilock(ip);
+    ip->nlink = 1;
+    iupdate(ip);
+
+    if (type == T_DIR) {
+        dp->nlink++;
+        iupdate(dp);
+
+        if (dirlink(ip, ".", ip->inum) < 0 ||
+            dirlink(ip, "..", dp->inum) < 0)
+            panic("create dots");
+    }
+
+    if (dirlink(dp, name, ip->inum) < 0) {
+        if (type == T_DIR) 
+            dp->nlink--;
+
+        ip->nlink = 0;
+        iupdate(ip);
+        iunlock(ip);
+        iput(ip);
+        iunlock(dp);
+        iput(dp);
+        return 0;
+    }
+
+    iunlock(dp);
+    iput(dp);
+
+    return ip;
+}
+
 /* ================================================================
  * sys_open — 打开（或创建）文件，返回 fd
  * ================================================================ */
 uint64
 sys_open(void)
 {
-    char path[128];
+    char path[MAXPATH];
     int fd, flags;
     struct file *f;
-    struct inode *ip, *dp;
-    char name[DIRSIZ];
+    struct inode *ip;
 
     argint(1, &flags);                    // 拿 flag
     // argstr(0, path, sizeof(path));        // 拿路径
@@ -32,55 +95,17 @@ sys_open(void)
     if (flags & O_CREAT) {
         begin_op();
 
-        // 创建路径需要先找到父目录，再处理最后一级文件名。
-        if ((dp = nameiparent(path, name)) == 0) {
+        if ((ip = create(path, T_FILE)) == 0) {
             end_op();
             return -1;
         }
 
-        ilock(dp);
-
-        if ((ip = dirlookup(dp, name, 0)) != 0) {
-            // 文件已存在：直接打开已有 inode。
-            iunlock(dp);
-            iput(dp);
-            ilock(ip);
-            if (ip->type == T_DIR && (flags & (O_WRONLY | O_RDWR))) {
-                iunlock(ip);
-                iput(ip);
-                end_op();
-                return -1;
-            }
-        } else {
-            // 文件不存在且 O_CREAT：分配 inode 并把名字链接进父目录。
-            if ((ip = ialloc(dp->dev, T_FILE)) == 0) {
-                iunlock(dp);
-                iput(dp);
-                end_op();
-                return -1;
-            }
-            ilock(ip);
-            ip->nlink = 1;
-            iupdate(ip);
-
-            if (dirlink(dp, name, ip->inum) < 0) {
-                ip->nlink = 0;
-                iupdate(ip);
-                iunlock(ip);
-                iput(ip);
-                iunlock(dp);
-                iput(dp);
-                end_op();
-                return -1;
-            }
-            iunlock(dp);
-            iput(dp);
-        }
     } else {
-        // 普通打开应该直接解析目标路径本身，例如 open("/", O_RDONLY)。
         if ((ip = namei(path)) == 0)
             return -1;
+
         ilock(ip);
+
         if (ip->type == T_DIR && (flags & (O_WRONLY | O_RDWR))) {
             iunlock(ip);
             iput(ip);
@@ -103,7 +128,7 @@ sys_open(void)
     f->writable = (flags & O_WRONLY) || (flags & O_RDWR);
 
     // 4. 分配 fd
-    for (fd = 0; fd < NOFILE; fd++) {
+    for (fd = 2; fd < NOFILE; fd++) {
         if (myproc()->ofile[fd] == 0) {
             myproc()->ofile[fd] = f;
             break;
@@ -121,6 +146,29 @@ sys_open(void)
     if (flags & O_CREAT)
         end_op();
     return fd;
+}
+
+uint64
+sys_mkdir(void) 
+{
+    char path[MAXPATH];
+    struct inode *ip;
+
+    if (argstr(0, path, sizeof(path)) < 0) 
+        return -1;
+
+    begin_op();
+
+    if ((ip = create(path, T_DIR)) == 0) {
+        end_op();
+        return -1;
+    }
+
+    iunlock(ip);
+    iput(ip);
+
+    end_op();
+    return 0;
 }
 
 /* ================================================================

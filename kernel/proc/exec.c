@@ -225,12 +225,12 @@ exec(char *path, uint64 argv)
   p->sz = stackva + PGSIZE;
   p->trapframe->epc = elf.entry;
   p->trapframe->sp = sp;
-  p->trapframe->a0 = argc;
+  // p->trapframe->a0 = argc;
   p->trapframe->a1 = argv_user;
   safestrcpy(p->name, path, sizeof(p->name));
 
   uvmfree(oldpagetable, oldsz);
-  return 0;
+  return argc;
 
 bad:
   if (pagetable) {

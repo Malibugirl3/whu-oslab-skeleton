@@ -314,6 +314,23 @@ ialloc(uint dev, short type)
 }
 
 /*
+idup — 增加 inode 引用计数
+
+参数：
+  ip — inode 指针
+
+返回：inode 指针
+*/
+struct inode*
+idup(struct inode *ip)
+{
+  acquire(&icache.lock);
+  ip->ref++;
+  release(&icache.lock);
+  return ip;
+}
+
+/*
 bzero — 清零一个磁盘块
 
 参数：
@@ -606,7 +623,7 @@ dirlink(struct inode *dp, char *name, uint inum)
     // off 到了 dp->size 说明没空洞，在末尾追加
 
     memset(&de, 0, sizeof(de));   // 清零，确保 padding 全 0
-    de.inum = inum;
+    de.inum = inum; // 写入 inode 号
     memmove(de.name, name, DIRSIZ);
 
     writei(dp, 0, (uint64)&de, off, sizeof(de));
@@ -614,6 +631,16 @@ dirlink(struct inode *dp, char *name, uint inum)
     return 0;
 }
 
+
+/*
+skipelem — 从路径中提取文件名
+
+参数：
+  path — 路径
+  name — 文件名
+
+返回：剩余路径
+*/
 static char*
 skipelem(char *path, char *name)
 {
@@ -641,63 +668,70 @@ skipelem(char *path, char *name)
     return path;
 }
 
+
+/*
+namex — 解析路径，返回最终 inode
+
+参数：
+  path — 路径
+  nameiparent — 是否是父目录
+  name — 文件名
+
+返回：最终 inode
+*/
+struct inode*
+namex(char *path, int nameiparent, char *name)
+{
+  struct inode *ip, *next;
+
+  if (*path =='/') 
+    ip = iget(ROOTDEV, ROOTINO);
+  else
+    ip = idup(myproc()->cwd);
+
+  while ((path = skipelem(path, name)) != 0) {
+    ilock(ip);
+
+    if (ip->type != T_DIR) {
+      iunlock(ip);
+      iput(ip);
+      return 0;
+    }
+
+    if (nameiparent && *path == 0) {
+      iunlock(ip);
+      return ip;
+    }
+    
+    next = dirlookup(ip, name, 0);
+    iunlock(ip);
+    iput(ip);
+    if (next == 0)
+      return 0;
+    ip = next;
+  }
+
+  if (nameiparent) {
+    iput(ip);
+    return 0;
+  }
+
+  return ip;
+}
+
+
 struct inode*
 namei(char *path)
 {
     char name[DIRSIZ];
-    struct inode *ip, *next;
-
-    if (*path == '/')
-        ip = iget(ROOTDEV, ROOTINO);
-    else
-        return 0;
-
-    while ((path = skipelem(path, name)) != 0) {
-        ilock(ip);
-        if (ip->type != T_DIR) {
-            iunlock(ip);
-            iput(ip);
-            return 0;
-        }
-        next = dirlookup(ip, name, 0);
-        iunlock(ip);
-        iput(ip);
-        if (next == 0)
-            return 0;
-        ip = next;
-    }
-    return ip;
+    return namex(path, 0, name);
 }
 
 // 返回父目录 inode，最后一段文件名写入 name
 struct inode*
 nameiparent(char *path, char *name)
 {
-    struct inode *ip, *next;
-
-    if (*path == '/')
-        ip = iget(ROOTDEV, ROOTINO);
-    else
-        return 0;
-
-    while ((path = skipelem(path, name)) != 0) {
-        ilock(ip);
-        if (ip->type != T_DIR) {
-            iunlock(ip); iput(ip); return 0;
-        }
-        if (*path == 0) {
-            iunlock(ip);
-            return ip;          // ip 是父目录，name 已是最后一段
-        }
-        next = dirlookup(ip, name, 0);
-        iunlock(ip);
-        iput(ip);
-        if (next == 0)
-            return 0;
-        ip = next;
-    }
-    iput(ip);
-    return 0;
+    return namex(path, 1, name);
 }
 
 /* ================================================================

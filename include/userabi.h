@@ -20,6 +20,7 @@
 #define SYS_close  18
 #define SYS_unlink 19
 #define SYS_exec   20
+#define SYS_mkdir  21
 
 /* open flags */
 #define O_RDONLY 0x000
