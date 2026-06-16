@@ -5,11 +5,10 @@
 #include "types.h"
 #include "param.h"
 #include "sleeplock.h"
+#include "fsabi.h"
 
 /* inode 类型 */
-#define T_FILE   1
-#define T_DIR    2
-#define T_DEVICE 3
+// 移动到 include/fsabi.h 中，避免重复定义
 
 /* 文件描述符类型 */
 #define FD_NONE   0
@@ -42,10 +41,11 @@ struct inode {
 };
 
 /* 目录项 */
-struct dirent {
-    ushort inum;
-    char name[DIRSIZ];
-};
+// struct dirent {
+//     ushort inum;
+//     char name[DIRSIZ];
+// };
+// 移动到 include/fsabi.h 中，避免重复定义
 
 /* 超级块 */
 struct superblock {

@@ -115,3 +115,21 @@ filewrite(struct file *f, uint64 addr, int n)
 
     return r;
 }
+
+int
+filestat(struct file *f, uint64 addr)
+{
+    struct stat st;
+
+    if (f->type != FD_INODE)
+        return -1;
+
+    ilock(f->ip);
+    stati(f->ip, &st);
+    iunlock(f->ip);
+
+    if (copyout(myproc()->pagetable, addr, (char *)&st, sizeof(st)) < 0)
+        return -1;
+
+    return 0;
+}

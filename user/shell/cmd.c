@@ -46,6 +46,7 @@ static int parse_line(char *line, char **argv) {
 static struct command commands[] = {
   { "help", cmd_help },
   { "exit", cmd_exit },
+  { "cd", cmd_cd },
   { 0, 0 },
 };
 

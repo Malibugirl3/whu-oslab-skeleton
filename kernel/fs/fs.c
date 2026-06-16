@@ -186,6 +186,25 @@ iunlock(struct inode *ip)
 }
 
 /*
+stati — 获取 inode 的统计信息
+
+参数：
+  ip — inode 指针
+  st — 统计信息结构体
+
+返回：无
+*/
+void 
+stati (struct inode *ip, struct stat *st) 
+{
+  st->dev = ip->dev;
+  st->ino = ip->inum;
+  st->type = ip->type;
+  st->nlink = ip->nlink;
+  st->size = ip->size;
+}
+
+/*
 iupdate — 更新 inode
 
 参数：
@@ -599,6 +618,17 @@ int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n) {
 }
 
 
+static void
+dirformatname(char dst[DIRSIZ], const char *src)
+{
+    int i;
+
+    for (i = 0; i < DIRSIZ; i++)
+        dst[i] = 0;
+
+    for (i = 0; i < DIRSIZ && src[i]; i++)
+        dst[i] = src[i];
+}
 
 int
 dirlink(struct inode *dp, char *name, uint inum)
@@ -624,7 +654,7 @@ dirlink(struct inode *dp, char *name, uint inum)
 
     memset(&de, 0, sizeof(de));   // 清零，确保 padding 全 0
     de.inum = inum; // 写入 inode 号
-    memmove(de.name, name, DIRSIZ);
+    dirformatname(de.name, name);
 
     writei(dp, 0, (uint64)&de, off, sizeof(de));
 
@@ -764,7 +794,7 @@ struct inode *dirlookup(struct inode *dp, char *name, uint *poff) {
      * TODO [Lab7-任务3]：
      *   比较 de.name 和 name 是否相同（最多比较 DIRSIZ 个字符）。
      *   若匹配：记录偏移到 *poff，调用 iget 获取并返回 inode。
-     *   注意：需要自己实现 strncmp（裸机无标准库）。
+     *   目录项名字是固定 DIRSIZ 字节字段，查找时按完整字段比较。
      * ================================================================ */
     if (memcmp(de.name, name, DIRSIZ) == 0) {
       if (poff) *poff = off;

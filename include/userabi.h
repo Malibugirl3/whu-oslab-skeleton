@@ -21,6 +21,11 @@
 #define SYS_unlink 19
 #define SYS_exec   20
 #define SYS_mkdir  21
+#define SYS_chdir  22
+#define SYS_fstat  23
+
+/* path limits */
+#define MAXPATH 128
 
 /* open flags */
 #define O_RDONLY 0x000

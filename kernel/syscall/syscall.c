@@ -35,10 +35,12 @@ extern uint64 sys_read(void);
 extern uint64 sys_unlink(void);
 extern uint64 sys_close(void);
 extern uint64 sys_mkdir(void);
+extern uint64 sys_chdir(void);
+extern uint64 sys_fstat(void);
 
 // 系统调用号 TODO: 后续需要修改为动态分配,或者syscalls数组大小
 // 宏定义之类的总之想办法处理好该处频繁手动更改数组大小的问题并且直接用数组盛情一个固定的大小，可阅读性太差了
-static uint64 (*syscalls[22])(void) = {
+static uint64 (*syscalls[24])(void) = {
     [SYS_fork]   = sys_fork,
     [SYS_exit]   = sys_exit,
     [SYS_wait]   = sys_wait,
@@ -50,6 +52,8 @@ static uint64 (*syscalls[22])(void) = {
     [SYS_exec]   = sys_exec,
     [SYS_getpid] = sys_getpid,
     [SYS_mkdir]  = sys_mkdir,
+    [SYS_chdir]  = sys_chdir,
+    [SYS_fstat]  = sys_fstat,
 };
 
 /* ================================================================

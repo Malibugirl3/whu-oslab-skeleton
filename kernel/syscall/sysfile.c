@@ -405,3 +405,54 @@ sys_unlink(void)
     end_op();
     return 0;
 }
+
+
+uint64
+sys_chdir(void)
+{
+    char path[MAXPATH];
+    struct inode *ip;
+    struct proc *p = myproc();
+
+    if (argstr(0, path, sizeof(path)) < 0)
+        return -1;
+
+    if ((ip = namei(path)) == 0)
+        return -1;
+
+    ilock(ip);
+    
+    if (ip->type != T_DIR) {
+        iunlock(ip);
+        iput(ip);
+        return -1;
+    }
+
+    iunlock(ip);
+
+    iput(p->cwd);
+    p->cwd = ip;
+
+    return 0;
+
+}
+
+uint64
+sys_fstat(void)
+{
+    int fd;
+    uint64 addr;
+    struct file *f;
+
+    argint(0, &fd);
+    argaddr(1, &addr);
+
+    if (fd < 0 || fd >= NOFILE)
+        return -1;
+
+    f = myproc()->ofile[fd];
+    if (f == 0)
+        return -1;
+
+    return filestat(f, addr);
+}

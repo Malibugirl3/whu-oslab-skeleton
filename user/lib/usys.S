@@ -102,3 +102,15 @@ mkdir:
     li a7, SYS_mkdir
     ecall
     ret
+
+    .global chdir
+chdir:
+    li a7, SYS_chdir
+    ecall
+    ret
+
+    .global fstat
+fstat:
+    li a7, SYS_fstat
+    ecall
+    ret

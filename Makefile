@@ -106,7 +106,7 @@ USER_BIN    = $(USER_INIT).bin
 INITCODE_H  = kernel/proc/initcode.h
 FSIMG       = fs.img
 MKFS        = mkfs
-USER_PROGS  = user/_sh user/_hello user/_echo user/_cat user/_touch user/_rm user/_mkdir
+USER_PROGS  = user/_sh user/_hello user/_echo user/_cat user/_touch user/_rm user/_mkdir user/_ls
 
 # ============================================================
 # 构建目标

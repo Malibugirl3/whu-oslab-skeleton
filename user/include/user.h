@@ -2,6 +2,7 @@
 #define USER_H
 
 #include "userabi.h"      /* syscall numbers, open flags, exec argv limits */
+#include "fsabi.h"
 
 int open(const char *path, int flags);
 int read(int fd, char *buf, int n);
@@ -14,6 +15,8 @@ int fork(void);
 int wait(int *status);
 void exit(int status);
 int mkdir(const char *path);
+int fstat(int fd, struct stat *st);
+int chdir(const char *path);
 
 int strlen(const char *s);
 int strcmp(const char *a, const char *b);
