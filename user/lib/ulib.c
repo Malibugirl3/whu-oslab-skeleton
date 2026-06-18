@@ -125,6 +125,21 @@ void uprintf(const char *fmt, ...) {
     if (fmt[i] == '\0')
       break;
 
+    int left_align = 0;   // 左对齐标志 0 - 右对齐 1 - 左对齐
+    int width = 0;
+
+    if (fmt[i] == '-') {
+      left_align = 1;
+      i++;
+    }
+
+    while (fmt[i] >= '0' && fmt[i] <= '9') {
+      width = width * 10 + (fmt[i] - '0');
+      i++;
+    }
+
+    if (fmt[i] == '\0') break;
+
     switch (fmt[i]) {
     case 'd':
       print_int(va_arg(ap, int));

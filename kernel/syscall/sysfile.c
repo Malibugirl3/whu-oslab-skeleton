@@ -267,14 +267,12 @@ sys_write(void)
 
     // fd=1 (stdout) 直接输出到 UART
     if (fd == 1) {
-        char buf[256];
-        int m = n;
-        if (m > 256) m = 256;
-        if (copyin(myproc()->pagetable, buf, addr, m) < 0)
-            return -1;
-        for (int i = 0; i < m; i++)
-            uart_putc(buf[i]);
-        return m;
+        for (int i = 0; i < n; i++) {
+            char c;
+            copyin(myproc()->pagetable, &c, addr + i, 1);
+            uart_putc(c);
+        }
+        return n;
     }
 
     f = myproc()->ofile[fd];

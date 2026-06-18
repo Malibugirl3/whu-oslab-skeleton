@@ -24,6 +24,8 @@
 #define SYS_chdir  22
 #define SYS_fstat  23
 
+#define NELEM_SYSCALL 32
+
 /* path limits */
 #define MAXPATH 128
 
