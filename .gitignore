@@ -6,3 +6,4 @@
 .vscode/
 .claude/
 kernel/proc/initcode.h
+user/_*

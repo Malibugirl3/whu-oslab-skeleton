@@ -32,7 +32,7 @@ static struct log {
   int start;
   int size;
   int outstanding;
-  int committing;
+  int committing;  // 是否正在提交事务
   struct logheader lh;
 } log;
 
