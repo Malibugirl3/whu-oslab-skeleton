@@ -460,3 +460,24 @@ int copyinstr(pagetable_t pagetable, char *dstva, uint64 srcva, uint64 max) {
     return 0;
   return -1;
 }
+
+int uvmgrow(pagetable_t pagetable, uint64 oldsz, uint64 newsz) {
+  char *mem;
+  uint64 a;
+
+  if (newsz < oldsz)
+    return -1;
+
+  oldsz = PGROUNDUP(oldsz);
+  for (a = oldsz; a < newsz; a += PGSIZE) {
+    mem = kalloc();
+    if (mem == 0)
+      return -1;
+    memset(mem, 0, PGSIZE);
+    if (mappages(pagetable, (uint64)mem, a, PGSIZE, PTE_W | PTE_R | PTE_U) != 0) {
+      kfree(mem);
+      return -1;
+    }
+  }
+  return 0;
+}

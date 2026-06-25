@@ -83,6 +83,7 @@ void uartinit(void) {
   *Reg(3) = 0x03;
   // 启用 FIFO，清空缓冲区
   *Reg(2) = 0xC7;
-  // 开启接收中断（IER bit0=1）
-  *Reg(1) = 0x01;
+  // shell 使用 sys_read 轮询读入；若同时开 RX 中断，trap 里也会读 UART，
+  // 字符会被中断 handler 偷走，导致 mkdir 变成 mdir、参数丢失。
+  *Reg(1) = 0x00;
 }

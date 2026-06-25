@@ -4,11 +4,9 @@
 int cmd_help(int argc, char **argv) {
   (void)argc;
   (void)argv;
-  write(1, "builtins: help exit\n", 20);
-  write(1, "external:\n", 10);  // TODO: 之后应该写成循环输出所有外部命令
-  write(1, "echo\n", 5);
-  write(1, "cd\n", 3);
-  write(1, "hello\n", 6);
+  write(1, "builtins: help exit cd\n", 23);
+  write(1, "external: hello echo cat touch rm mkdir ls pwd\n", 47);
+  write(1, "shell features: | > >> < &\n", 27);
   return 0;
 }
 
@@ -19,13 +17,12 @@ int cmd_exit(int argc, char **argv) {
   return 0;
 }
 
-
 int cmd_cd(int argc, char **argv) {
   char *path;
 
-  if (argc < 2) 
-    path = ".";
-  else 
+  if (argc < 2)
+    path = "/";
+  else
     path = argv[1];
 
   if (chdir(path) < 0) {

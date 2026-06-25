@@ -10,6 +10,97 @@
 #include "file.h"
 #include "userabi.h"
 
+static void normalize_path(char *path) {
+    char comps[32][DIRSIZ + 1];
+    char tmp[MAXPATH];
+    int ncomp = 0;
+    int i = 0;
+    int j = 0;
+
+    if (path[0] != '/') {
+        tmp[0] = '/';
+        j = 1;
+        while (path[i] && j < MAXPATH - 1)
+            tmp[j++] = path[i++];
+        tmp[j] = 0;
+    } else {
+        safestrcpy(tmp, path, MAXPATH);
+    }
+
+    i = 0;
+    while (tmp[i]) {
+        while (tmp[i] == '/')
+            i++;
+        if (!tmp[i])
+            break;
+        int start = i;
+        while (tmp[i] && tmp[i] != '/')
+            i++;
+        int len = i - start;
+        if (len == 1 && tmp[start] == '.')
+            continue;
+        if (len == 2 && tmp[start] == '.' && tmp[start + 1] == '.') {
+            if (ncomp > 0)
+                ncomp--;
+            continue;
+        }
+        if (ncomp >= 32 || len >= DIRSIZ)
+            continue;
+        memmove(comps[ncomp], &tmp[start], len);
+        comps[ncomp][len] = 0;
+        ncomp++;
+    }
+
+    if (ncomp == 0) {
+        path[0] = '/';
+        path[1] = 0;
+        return;
+    }
+
+    j = 0;
+    for (i = 0; i < ncomp; i++) {
+        path[j++] = '/';
+        int k = 0;
+        while (comps[i][k])
+            path[j++] = comps[i][k++];
+    }
+    path[j] = 0;
+}
+
+static void make_abs_path(struct proc *p, const char *path, char *abs) {
+    int i = 0;
+
+    if (path[0] == '/') {
+        safestrcpy(abs, path, MAXPATH);
+    } else {
+        if (p->cwdpath[0] == '/' && p->cwdpath[1] == 0) {
+            abs[i++] = '/';
+        } else {
+            safestrcpy(abs, p->cwdpath, MAXPATH);
+            i = strlen(abs);
+            if (i > 0 && abs[i - 1] != '/' && i < MAXPATH - 1)
+                abs[i++] = '/';
+        }
+        int j = 0;
+        while (path[j] && i < MAXPATH - 1)
+            abs[i++] = path[j++];
+        abs[i] = 0;
+    }
+    normalize_path(abs);
+}
+
+static int fdalloc(struct file *f) {
+    struct proc *p = myproc();
+
+    for (int fd = 0; fd < NOFILE; fd++) {
+        if (p->ofile[fd] == 0) {
+            p->ofile[fd] = f;
+            return fd;
+        }
+    }
+    return -1;
+}
+
 
 static struct inode*
 create(char *path, short type)
@@ -111,6 +202,15 @@ sys_open(void)
             iput(ip);
             return -1;
         }
+
+        if ((flags & O_TRUNC) && ip->type == T_FILE &&
+            (flags & (O_WRONLY | O_RDWR))) {
+            begin_op();
+            itrunc(ip);
+            ip->size = 0;
+            iupdate(ip);
+            end_op();
+        }
     }
 
     // 3. 分配 file 结构
@@ -123,7 +223,10 @@ sys_open(void)
     }
     f->type = FD_INODE;
     f->ip = ip;
-    f->off = 0;
+    if (flags & O_APPEND)
+        f->off = ip->size;
+    else
+        f->off = 0;
     f->readable = !(flags & O_WRONLY);
     f->writable = (flags & O_WRONLY) || (flags & O_RDWR);
 
@@ -188,8 +291,12 @@ sys_read(void)
     if (fd < 0 || fd >= NOFILE)
         return -1;
 
-    // fd=0 (stdin) 从 UART 读取输入。
+    // fd=0 (stdin) 优先使用 dup 后的 ofile，否则 UART
     if (fd == 0) {
+        f = myproc()->ofile[0];
+        if (f)
+            return fileread(f, addr, n);
+
         int i = 0;
         char c;
         char kbuf[128];
@@ -265,8 +372,16 @@ sys_write(void)
     if (fd < 0 || fd >= NOFILE)
         return -1;
 
-    // fd=1 (stdout) 直接输出到 UART
+    // fd=1 (stdout) 优先使用 dup 后的 ofile，否则 UART
     if (fd == 1) {
+        f = myproc()->ofile[1];
+        if (f) {
+            begin_op();
+            int r = filewrite(f, addr, n);
+            end_op();
+            return r;
+        }
+
         for (int i = 0; i < n; i++) {
             char c;
             copyin(myproc()->pagetable, &c, addr + i, 1);
@@ -430,9 +545,110 @@ sys_chdir(void)
 
     iput(p->cwd);
     p->cwd = ip;
+    make_abs_path(p, path, p->cwdpath);
 
     return 0;
 
+}
+
+uint64
+sys_getcwd(void)
+{
+    uint64 addr;
+    struct proc *p = myproc();
+
+    argaddr(0, &addr);
+    if (copyout(p->pagetable, addr, p->cwdpath, strlen(p->cwdpath) + 1) < 0)
+        return -1;
+    return 0;
+}
+
+uint64
+sys_stat(void)
+{
+    char path[MAXPATH];
+    uint64 addr;
+    struct inode *ip;
+    struct stat st;
+
+    if (argstr(0, path, sizeof(path)) < 0)
+        return -1;
+    argaddr(1, &addr);
+
+    if ((ip = namei(path)) == 0)
+        return -1;
+
+    ilock(ip);
+    stati(ip, &st);
+    iunlock(ip);
+    iput(ip);
+
+    if (copyout(myproc()->pagetable, addr, (char *)&st, sizeof(st)) < 0)
+        return -1;
+    return 0;
+}
+
+uint64
+sys_dup(void)
+{
+    int fd;
+    struct file *f;
+
+    argint(0, &fd);
+    if (fd < 0 || fd >= NOFILE)
+        return -1;
+
+    f = myproc()->ofile[fd];
+    if (f == 0)
+        return -1;
+
+    return fdalloc(filedup(f));
+}
+
+uint64
+sys_dup2(void)
+{
+    int oldfd, newfd;
+    struct file *f;
+    struct proc *p = myproc();
+
+    argint(0, &oldfd);
+    argint(1, &newfd);
+    if (oldfd < 0 || oldfd >= NOFILE || newfd < 0 || newfd >= NOFILE)
+        return -1;
+    if (oldfd == newfd)
+        return newfd;
+
+    f = p->ofile[oldfd];
+    if (f == 0)
+        return -1;
+
+    if (p->ofile[newfd])
+        fileclose(p->ofile[newfd]);
+    p->ofile[newfd] = filedup(f);
+    return newfd;
+}
+
+uint64
+sys_pipe(void)
+{
+    uint64 fdarray;
+    int fds[2];
+
+    argaddr(0, &fdarray);
+    if (createpipe(fds) < 0)
+        return -1;
+    if (copyout(myproc()->pagetable, fdarray, (char *)fds, sizeof(fds)) < 0) {
+        struct proc *p = myproc();
+        struct file *f0 = p->ofile[fds[0]];
+        struct file *f1 = p->ofile[fds[1]];
+        p->ofile[fds[0]] = 0;
+        p->ofile[fds[1]] = 0;
+        fileclose(f0);
+        fileclose(f1);
+        return -1;
+    }
+    return 0;
 }
 
 uint64

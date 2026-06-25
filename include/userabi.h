@@ -23,6 +23,11 @@
 #define SYS_mkdir  21
 #define SYS_chdir  22
 #define SYS_fstat  23
+#define SYS_dup    24
+#define SYS_dup2   25
+#define SYS_pipe   26
+#define SYS_stat   27
+#define SYS_getcwd 28
 
 #define NELEM_SYSCALL 32
 
@@ -34,6 +39,8 @@
 #define O_CREAT  0x001
 #define O_WRONLY 0x002
 #define O_RDWR   0x004
+#define O_TRUNC  0x008
+#define O_APPEND 0x010
 
 /* exec argv limits */
 #define MAXARG    32

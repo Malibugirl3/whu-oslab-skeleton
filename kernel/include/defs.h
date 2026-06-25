@@ -192,6 +192,7 @@ int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n);
 int writei(struct inode *ip, int user_src, uint64 src, uint off, uint n);
 void ilock(struct inode *ip);
 void iunlock(struct inode *ip);
+void itrunc(struct inode *ip);
 void stati(struct inode *ip, struct stat *st);
 void iput(struct inode *ip);
 void iupdate(struct inode *ip);
@@ -212,6 +213,11 @@ void fileclose(struct file *f);
 int fileread(struct file *f, uint64 addr, int n);
 int filewrite(struct file *f, uint64 addr, int n);
 int filestat(struct file *f, uint64 addr);
+int piperead(struct file *f, uint64 addr, int n);
+int pipewrite(struct file *f, uint64 addr, int n);
+void pipefileclose(struct file *f);
+int createpipe(int fd[2]);
+int uvmgrow(pagetable_t pagetable, uint64 oldsz, uint64 newsz);
 
 /* ======================================================
  * Lab7 新增：文件系统调用
@@ -223,5 +229,11 @@ uint64 sys_write(void);
 uint64 sys_close(void);
 uint64 sys_unlink(void);
 uint64 sys_fstat(void);
+uint64 sys_dup(void);
+uint64 sys_dup2(void);
+uint64 sys_pipe(void);
+uint64 sys_stat(void);
+uint64 sys_getcwd(void);
+uint64 sys_chdir(void);
 
 #endif /* DEFS_H */

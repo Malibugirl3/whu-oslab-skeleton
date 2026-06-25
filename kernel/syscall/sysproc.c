@@ -61,3 +61,17 @@ uint64 sys_exec(void) {
 
   return exec(path, argv);
 }
+
+uint64 sys_sbrk(void) {
+  int n;
+  struct proc *p = myproc();
+  uint64 oldsz = p->sz;
+
+  argint(0, &n);
+  if (n < 0)
+    return -1;
+  if (uvmgrow(p->pagetable, oldsz, oldsz + n) < 0)
+    return -1;
+  p->sz = oldsz + n;
+  return oldsz;
+}

@@ -251,7 +251,7 @@ static void bfree(uint dev, uint b);
  * 参数：
  *   ip — 要清空的 inode 指针
  * ================================================================ */
-static void
+void
 itrunc(struct inode *ip)
 {
     int i;

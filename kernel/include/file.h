@@ -14,6 +14,18 @@
 #define FD_NONE   0
 #define FD_INODE  1
 #define FD_DEVICE 2
+#define FD_PIPE   3
+
+#define PIPESIZE 512
+
+struct pipe {
+  struct spinlock lock;
+  char data[PIPESIZE];
+  uint nread;
+  uint nwrite;
+  int readopen;
+  int writeopen;
+};
 
 /* 磁盘 inode 结构（磁盘上的持久化格式）*/
 struct dinode {
@@ -65,6 +77,7 @@ struct file {
     int ref;
     char readable;
     char writable;
+    struct pipe *pipe;
     struct inode *ip;
     uint off;
 };

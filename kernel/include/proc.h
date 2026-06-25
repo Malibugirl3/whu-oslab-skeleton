@@ -12,6 +12,7 @@
 #include "param.h"
 #include "spinlock.h"
 #include "file.h"
+#include "userabi.h"
 
 /* ================================================================
  * 进程状态枚举
@@ -119,6 +120,7 @@ struct proc {
   char name[16];               /* 进程名称（调试用）*/
   struct file *ofile[NOFILE];  /* 打开的文件描述符表 */
   struct inode *cwd;           /* 当前工作目录 */
+  char cwdpath[MAXPATH];       /* 当前工作目录路径字符串 */
   pagetable_t pagetable;       /* 该进程的用户页表 */
   struct trapframe *trapframe; /* 陷阱帧（保存用户寄存器）*/
   struct context context;      /* 内核上下文（swtch 使用）*/

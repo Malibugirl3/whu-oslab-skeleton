@@ -6,6 +6,60 @@ static void putc_fd(int fd, char c) {
   write(fd, &c, 1);
 }
 
+static void print_int_width(int x, int width, int left_align) {
+  char buf[16];
+  int i = 0;
+  int neg = 0;
+  int len;
+
+  if (x == 0) {
+    buf[i++] = '0';
+  } else {
+    if (x < 0) {
+      neg = 1;
+      x = -x;
+    }
+    while (x > 0) {
+      buf[i++] = '0' + (x % 10);
+      x /= 10;
+    }
+    if (neg)
+      buf[i++] = '-';
+    for (int l = 0, r = i - 1; l < r; l++, r--) {
+      char t = buf[l];
+      buf[l] = buf[r];
+      buf[r] = t;
+    }
+  }
+
+  len = i;
+  if (!left_align) {
+    for (int p = len; p < width; p++)
+      write(1, " ", 1);
+  }
+  write(1, buf, len);
+  if (left_align) {
+    for (int p = len; p < width; p++)
+      write(1, " ", 1);
+  }
+}
+
+static void print_str_width(const char *s, int width, int left_align) {
+  int len = strlen(s);
+
+  if (len > width)
+    len = width;
+  if (!left_align) {
+    for (int p = len; p < width; p++)
+      write(1, " ", 1);
+  }
+  write(1, (char *)s, len);
+  if (left_align) {
+    for (int p = len; p < width; p++)
+      write(1, " ", 1);
+  }
+}
+
 int strlen(const char *s) {
   int n = 0;
   while (s[n] != '\0')
@@ -56,35 +110,15 @@ void puts(const char *s) {
 }
 
 void print_int(int x) {
-  char buf[16];
-  int i = 0;
-  int neg = 0;
+  print_int_width(x, 0, 0);
+}
 
-  if (x == 0) {
-    write(1, "0", 1);
-    return;
-  }
+void print_padded(const char *s, int width) {
+  print_str_width(s, width, 1);
+}
 
-  if (x < 0) {
-    neg = 1;
-    x = -x;
-  }
-
-  while (x > 0) {
-    buf[i++] = '0' + (x % 10);
-    x /= 10;
-  }
-
-  if (neg)
-    buf[i++] = '-';
-
-  for (int l = 0, r = i - 1; l < r; l++, r--) {
-    char t = buf[l];
-    buf[l] = buf[r];
-    buf[r] = t;
-  }
-
-  write(1, buf, i);
+void print_int_padded(int x, int width) {
+  print_int_width(x, width, 0);
 }
 
 void print_hex(unsigned long x) {
@@ -125,7 +159,7 @@ void uprintf(const char *fmt, ...) {
     if (fmt[i] == '\0')
       break;
 
-    int left_align = 0;   // 左对齐标志 0 - 右对齐 1 - 左对齐
+    int left_align = 0;
     int width = 0;
 
     if (fmt[i] == '-') {
@@ -138,11 +172,12 @@ void uprintf(const char *fmt, ...) {
       i++;
     }
 
-    if (fmt[i] == '\0') break;
+    if (fmt[i] == '\0')
+      break;
 
     switch (fmt[i]) {
     case 'd':
-      print_int(va_arg(ap, int));
+      print_int_width(va_arg(ap, int), width, left_align);
       break;
     case 'x':
       print_hex((unsigned long)va_arg(ap, unsigned int));
@@ -155,7 +190,10 @@ void uprintf(const char *fmt, ...) {
       char *s = va_arg(ap, char *);
       if (s == 0)
         s = "(null)";
-      puts(s);
+      if (width > 0)
+        print_str_width(s, width, left_align);
+      else
+        puts(s);
       break;
     }
     case 'c':

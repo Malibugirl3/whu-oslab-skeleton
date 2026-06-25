@@ -56,6 +56,7 @@ static void freeproc(struct proc *p) {
     iput(p->cwd);
     p->cwd = 0;
   }
+  p->cwdpath[0] = 0;
   for (int i = 0; i < NOFILE; i++)
     p->ofile[i] = 0;
 }
@@ -151,6 +152,7 @@ struct proc *allocproc(void) {
       p->xstate = 0;
       p->parent = 0;
       p->cwd = 0;
+      p->cwdpath[0] = 0;
       for (int i = 0; i < NOFILE; i++)
         p->ofile[i] = 0;
       release(&p->lock);
@@ -384,6 +386,7 @@ int fork(void) {
 
   if (p->cwd) 
     np->cwd = idup(p->cwd);
+  memmove(np->cwdpath, p->cwdpath, MAXPATH);
 
   pid = np->pid;
 
@@ -427,6 +430,7 @@ void userinit(void) {
   p->trapframe->sp = PGSIZE;
   p->sz = PGSIZE;
   p->cwd = iget(ROOTDEV, ROOTINO);
+  safestrcpy(p->cwdpath, "/", MAXPATH);
 
   memset(p->name, 0, sizeof(p->name));
   memmove(p->name, "proczero", 9);

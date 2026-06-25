@@ -11,46 +11,6 @@ static const char *type_name(short type) {
   return "????";
 }
 
-static void print_padded(const char *s, int width) {
-  int n = strlen(s);
-
-  if (n > width)
-    n = width;
-
-  write(1, (char *)s, n);
-  for (int i = n; i < width; i++)
-    write(1, " ", 1);
-}
-
-static void print_int_padded(int x, int width) {
-  char buf[16];
-  int n = 0;
-  int i;
-
-  if (x == 0) {
-    buf[n++] = '0';
-  } else {
-    if (x < 0) {
-      write(1, "-", 1);
-      x = -x;
-      width--;
-    }
-    while (x > 0) {
-      buf[n++] = '0' + (x % 10);
-      x /= 10;
-    }
-    for (i = 0; i < n / 2; i++) {
-      char t = buf[i];
-      buf[i] = buf[n - 1 - i];
-      buf[n - 1 - i] = t;
-    }
-  }
-
-  write(1, buf, n);
-  for (i = n; i < width; i++)
-    write(1, " ", 1);
-}
-
 static void ls_file(struct stat *st, char name[DIRSIZ]) {
   print_padded(name, DIRSIZ);
   write(1, "\t", 1);

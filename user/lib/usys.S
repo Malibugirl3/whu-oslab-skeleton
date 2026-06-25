@@ -114,3 +114,39 @@ fstat:
     li a7, SYS_fstat
     ecall
     ret
+
+    .global dup
+dup:
+    li a7, SYS_dup
+    ecall
+    ret
+
+    .global dup2
+dup2:
+    li a7, SYS_dup2
+    ecall
+    ret
+
+    .global pipe
+pipe:
+    li a7, SYS_pipe
+    ecall
+    ret
+
+    .global stat
+stat:
+    li a7, SYS_stat
+    ecall
+    ret
+
+    .global getcwd
+getcwd:
+    li a7, SYS_getcwd
+    ecall
+    ret
+
+    .global sbrk
+sbrk:
+    li a7, SYS_sbrk
+    ecall
+    ret

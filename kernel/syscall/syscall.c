@@ -37,6 +37,12 @@ extern uint64 sys_close(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_chdir(void);
 extern uint64 sys_fstat(void);
+extern uint64 sys_dup(void);
+extern uint64 sys_dup2(void);
+extern uint64 sys_pipe(void);
+extern uint64 sys_stat(void);
+extern uint64 sys_getcwd(void);
+extern uint64 sys_sbrk(void);
 
 static uint64 (*syscalls[NELEM_SYSCALL])(void) = {
     [SYS_fork]   = sys_fork,
@@ -49,9 +55,15 @@ static uint64 (*syscalls[NELEM_SYSCALL])(void) = {
     [SYS_unlink] = sys_unlink,
     [SYS_exec]   = sys_exec,
     [SYS_getpid] = sys_getpid,
+    [SYS_sbrk]   = sys_sbrk,
     [SYS_mkdir]  = sys_mkdir,
     [SYS_chdir]  = sys_chdir,
     [SYS_fstat]  = sys_fstat,
+    [SYS_dup]    = sys_dup,
+    [SYS_dup2]   = sys_dup2,
+    [SYS_pipe]   = sys_pipe,
+    [SYS_stat]   = sys_stat,
+    [SYS_getcwd] = sys_getcwd,
 };
 
 /* ================================================================
