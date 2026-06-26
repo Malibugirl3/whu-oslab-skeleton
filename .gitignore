@@ -6,3 +6,6 @@
 .vscode/
 .claude/
 kernel/proc/initcode.h
+*.img
+mkfs
+user
